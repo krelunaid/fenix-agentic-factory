@@ -96,9 +96,19 @@ export const approvals = sqliteTable('approvals', {
   requestedBy: text('requested_by').notNull().references(() => users.id),
   decidedBy: text('decided_by').references(() => users.id),
   reason: text('reason').notNull(),
+  requiredApprovals: integer('required_approvals').notNull().default(1),
+  requiredRejections: integer('required_rejections').notNull().default(1),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   decidedAt: integer('decided_at', { mode: 'timestamp_ms' }),
 }, (table) => [index('idx_approvals_job_status').on(table.jobId, table.status)]);
+
+export const approvalVotes = sqliteTable('approval_votes', {
+  approvalId: text('approval_id').notNull().references(() => approvals.id),
+  userId: text('user_id').notNull().references(() => users.id),
+  decision: text('decision', { enum: ['approved', 'rejected'] }).notNull(),
+  reason: text('reason').notNull().default(''),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+}, (table) => [uniqueIndex('idx_approval_votes_pair').on(table.approvalId, table.userId), index('idx_approval_votes_approval').on(table.approvalId)]);
 
 export const buildEvents = sqliteTable('build_events', {
   id: text('id').primaryKey(),

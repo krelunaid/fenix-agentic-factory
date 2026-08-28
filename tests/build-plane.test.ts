@@ -141,6 +141,7 @@ test('MCP output cannot mutate policy and revoked clients lose access', () => {
 
 test('collaboration, visual mapping and certification are fail-closed', () => {
   assert.equal(canProjectRole('reviewer', 'approve'), true);
+  assert.equal(canProjectRole('viewer', 'comment'), false);
   assert.throws(() => optimisticCommentUpdate({ expectedUpdatedAt: 1, currentUpdatedAt: 2 }), /concurrent_update/);
   assert.equal(validateVisualSelection({ selector: '#hero', sourcePath: 'app/page.tsx', sourceLine: 10, frozenPaths: [] }).patchable, true);
   assert.equal(validateDesignTokens({ 'color.primary': '#fff', 'space.2': 8 }).valid, true);

@@ -93,6 +93,7 @@ export async function POST(request: Request) {
   const taskIds = taskDefinitions.map(() => crypto.randomUUID());
   const statements = [
     env.DB.prepare('INSERT INTO projects (id,organization_id,name,description,status,progress,tone,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(projectId, core.orgId, name, description || 'Nuovo progetto FENIX', 'Planning', 8, 'violet', core.user.userId, now, now),
+    env.DB.prepare("INSERT INTO project_members (project_id,user_id,role,invited_by,created_at) VALUES (?,?, 'owner',?,?)").bind(projectId, core.user.userId, core.user.userId, now),
     env.DB.prepare('INSERT INTO specifications (id,project_id,version,objective,assumptions_json,flows_json,scenarios_json,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?)').bind(specificationId, projectId, 1, description || name, '[]', '[]', '[]', core.user.userId, now),
     env.DB.prepare('INSERT INTO jobs (id,project_id,status,budget_limit,created_at,updated_at) VALUES (?,?,?,?,?,?)').bind(jobId, projectId, 'DRAFT', 25, now, now),
     ...taskDefinitions.map(([title, phase, status], index) => env.DB.prepare('INSERT INTO tasks (id,job_id,project_id,phase,title,status,priority,risk_level,idempotency_key,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(taskIds[index], jobId, projectId, phase, title, status, index, phase >= 8 ? 'medium' : 'low', `${projectId}:${phase}:${index}`, now)),

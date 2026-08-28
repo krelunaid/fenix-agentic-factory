@@ -29,6 +29,13 @@
       "when": 1787949368329,
       "tag": "0003_powerful_jackpot",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787953993179,
+      "tag": "0004_magenta_roland_deschain",
+      "breakpoints": true
     }
   ]
 }

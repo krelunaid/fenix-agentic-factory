@@ -26,7 +26,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 19 - Voce | PARTIAL | STT Whisper reale verificato, sessioni it/en, no audio retention, ambiguity/risk confirmation e fallback; TTS provider risponde 3043 e streaming/interruption restano degradati |
 | 20 - Agent Studio | PARTIAL | Profili/versioni e managed inference reali con trace/cost cap; restano tool execution, knowledge retrieval, subagent sandbox ed eval publish |
 | 21 - MCP | PARTIAL | Connection registry, permission/rate-limit/output policy e revoca; OAuth server e transport non distribuiti |
-| 22 - Team | PARTIAL | Project members, ruoli, commenti/resolve e notifiche schema; delivery notifiche e multi-approval avanzato da collegare |
+| 22 - Team | PARTIAL | Project-scoped RBAC reale, invite, comment threads, inbox persistente e quorum multi-approval con vote audit; resta delivery push/email |
 | 23 - Visual select | PARTIAL | DOM/source selection record, freeze policy, crop artifact e design token validation; browser mapping/diff runner non collegato |
 | 24 - Hardening | PARTIAL | Operations API, provider health/backup/certification schema, SLO e runbook; C1-C15 x3 e load/restore reali non eseguiti |
 

@@ -10,7 +10,7 @@ const permissions: Record<ProjectRole, ProjectAction[]> = {
 };
 
 export function canProjectRole(role: ProjectRole, action: ProjectAction) {
-  return permissions[role].includes(action);
+  return Boolean(permissions[role]?.includes(action));
 }
 
 export function optimisticCommentUpdate(input: { expectedUpdatedAt: number; currentUpdatedAt: number }) {
