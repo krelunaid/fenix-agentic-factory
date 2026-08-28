@@ -1,0 +1,8 @@
+{
+  "name": "fenix-visual-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "browser": { "binding": "BROWSER" },
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}

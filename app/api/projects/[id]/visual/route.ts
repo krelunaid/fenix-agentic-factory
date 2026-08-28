@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { NextResponse } from 'next/server';
 import { canOperate, requireProjectAccess } from '../../../../../lib/core-access';
 import { validateDesignTokens, validateVisualSelection } from '../../../../../lib/visual/policy';
+import { inspectVisualTarget } from '../../../../../lib/visual/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,8 +22,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const access = await requireProjectAccess(id);
   if (!access) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (!canOperate(access.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  const input = await request.json().catch(() => null) as { action?: unknown; selector?: unknown; sourcePath?: unknown; sourceLine?: unknown; frozenPaths?: unknown; previewId?: unknown; cropArtifactId?: unknown; constraints?: unknown; sourceArtifactId?: unknown; tokens?: unknown } | null;
+  const input = await request.json().catch(() => null) as { action?: unknown; selector?: unknown; sourcePath?: unknown; sourceLine?: unknown; frozenPaths?: unknown; previewId?: unknown; cropArtifactId?: unknown; constraints?: unknown; sourceArtifactId?: unknown; tokens?: unknown; width?: unknown; height?: unknown; baselineSha256?: unknown } | null;
   const now = Date.now();
+  if (input?.action === 'inspect' && typeof input.selector === 'string' && typeof input.previewId === 'string') {
+    if (!env.VISUAL_WORKER_URL || !env.VISUAL_CONTROL_TOKEN) return NextResponse.json({ error: 'visual_provider_not_configured' }, { status: 503 });
+    const preview = await env.DB.prepare("SELECT id,url FROM preview_sessions WHERE id=? AND project_id=? AND status='ready' AND expires_at>?").bind(input.previewId, id, now).first<{ id: string; url: string }>();
+    if (!preview?.url) return NextResponse.json({ error: 'ready_preview_required' }, { status: 409 });
+    try {
+      const inspection = await inspectVisualTarget(env.VISUAL_WORKER_URL, env.VISUAL_CONTROL_TOKEN, { organizationId: access.organizationId, projectId: id, requestId: crypto.randomUUID(), url: preview.url, selector: input.selector, width: typeof input.width === 'number' ? input.width : undefined, height: typeof input.height === 'number' ? input.height : undefined, baselineSha256: typeof input.baselineSha256 === 'string' ? input.baselineSha256 : undefined });
+      const metadata = inspection.metadata as { source?: { path?: string | null; line?: number | null }; box?: unknown; styles?: unknown; domPath?: unknown } | undefined;
+      const frozenPaths = Array.isArray(input.frozenPaths) ? input.frozenPaths.filter((value): value is string => typeof value === 'string') : [];
+      const selection = validateVisualSelection({ selector: input.selector, sourcePath: metadata?.source?.path ?? undefined, sourceLine: metadata?.source?.line ?? undefined, frozenPaths });
+      const selectionId = crypto.randomUUID();
+      const screenshot = inspection.screenshot as { sha256?: unknown } | undefined;
+      await env.DB.prepare('INSERT INTO visual_selections (id,project_id,preview_id,selector,source_path,source_line,crop_artifact_id,constraints_json,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(selectionId, id, input.previewId, input.selector, selection.sourcePath ?? null, selection.sourceLine ?? null, null, JSON.stringify({ viewport: inspection.viewport, box: metadata?.box, styles: metadata?.styles, domPath: metadata?.domPath, screenshotSha256: screenshot?.sha256 ?? null, visualDiff: inspection.visualDiff }), access.user.userId, now).run();
+      return NextResponse.json({ id: selectionId, ...selection, inspection, patchExecution: selection.patchable ? 'patch_planner_ready' : 'blocked' }, { status: 201 });
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'visual_inspection_failed' }, { status: 502 });
+    }
+  }
   if (input?.action === 'select' && typeof input.selector === 'string') {
     let selection;
     try { selection = validateVisualSelection({ selector: input.selector, sourcePath: typeof input.sourcePath === 'string' ? input.sourcePath : undefined, sourceLine: typeof input.sourceLine === 'number' ? input.sourceLine : undefined, frozenPaths: Array.isArray(input.frozenPaths) ? input.frozenPaths.filter((value): value is string => typeof value === 'string') : [] }); }

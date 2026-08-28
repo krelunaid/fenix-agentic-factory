@@ -27,7 +27,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 20 - Agent Studio | PARTIAL | Profili/versioni e managed inference reali con trace/cost cap; restano tool execution, knowledge retrieval, subagent sandbox ed eval publish |
 | 21 - MCP | PARTIAL | Connection registry, permission/rate-limit/output policy e revoca; OAuth server e transport non distribuiti |
 | 22 - Team | PARTIAL | Project-scoped RBAC reale, invite, comment threads, inbox persistente e quorum multi-approval con vote audit; resta delivery push/email |
-| 23 - Visual select | PARTIAL | DOM/source selection record, freeze policy, crop artifact e design token validation; browser mapping/diff runner non collegato |
+| 23 - Visual select | PARTIAL | Browser runner reale con DOM path, styles, crop PNG, a11y snapshot, responsive viewport ed exact visual diff; resta blob persistence e perceptual diff |
 | 24 - Hardening | PARTIAL | Operations API, provider health/backup/certification schema, SLO e runbook; C1-C15 x3 e load/restore reali non eseguiti |
 
 ## Evidence della slice
@@ -45,6 +45,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Patch runtime: write/read/delete firmati verificati sul sandbox distribuito; contenuto e precondition hash, rollback e audit sono fail-closed nel Control Plane.
 - AI Gateway: health PASS; inferenza text firmata reale PASS (`FENIX_AI_OK`) e image generation FLUX reale PASS (JPEG base64 verificato), con catalogo, token usage e ledger tenant-aware.
 - Voice provider: STT Whisper firmato PASS su audio AIFF reale (`Phoenix is operational.`); TTS MeloTTS configurato ma non dichiarato operativo perché il provider restituisce errore 3043.
+- Visual runner: Browser Rendering firmato PASS su viewport mobile, selector mapping, bounding box, crop PNG hash e accessibility role.
 - Schema replay: 52 tabelle applicate in SQLite isolato, `foreign_key_check` con zero errori.
 - Supply-chain audit production: zero vulnerabilità note dopo aggiornamento Next.js 16.3.3.
 - Secret pattern scan repository: nessuna credenziale rilevata.

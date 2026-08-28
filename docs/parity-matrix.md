@@ -16,5 +16,5 @@
 | MCP | Partial | Registry, permission, revoke, rate/output policy | OAuth server/client transport e C11 |
 | Cost attribution | Partial | Tabella ledger tenant-aware | Ingestion provider e reconciliation |
 | Team collaboration | Partial | Project RBAC, commenti, inbox e quorum multi-approval persistenti | Delivery push/email e race test distribuito |
-| Visual select | Partial | Source/freeze/token contract | Browser DOM mapping e visual diff runner |
+| Visual select | Partial | Browser DOM/styles mapping, crop PNG, responsive viewport, a11y snapshot ed exact hash diff reali | Blob persistence e perceptual diff |
 | Beta certification | Non certificato | Matrice C1-C15 x3 fail-closed | 45 run reali con evidence |

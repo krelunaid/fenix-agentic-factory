@@ -27,7 +27,7 @@ export async function GET() {
     agentStudio: env.AI_WORKER_URL && env.AI_CONTROL_TOKEN ? 'managed_inference_connected' : 'versioning_ready_requires_ai_worker',
     mcp: 'permission_model_ready_requires_oauth_provider',
     collaboration: 'connected',
-    visualSelect: 'mapping_contract_ready_requires_browser_runner',
+    visualSelect: env.VISUAL_WORKER_URL && env.VISUAL_CONTROL_TOKEN ? 'browser_runner_connected' : 'mapping_contract_ready_requires_browser_runner',
     betaCertification: 'not_certified',
   });
 }
