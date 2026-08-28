@@ -1,7 +1,7 @@
 import type { BuildScope, SandboxCommand, SandboxExecutionResult } from './contracts';
 import { deriveSandboxId } from './sandbox-id';
 
-type SandboxAction = 'exec' | 'write' | 'read' | 'preview' | 'destroy';
+type SandboxAction = 'exec' | 'write' | 'read' | 'preview' | 'destroy' | 'process/start' | 'process/kill';
 
 function toHex(buffer: ArrayBuffer) {
   return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -37,6 +37,14 @@ export function createSandboxClient(baseUrl: string, secret: string) {
     async preview(scope: BuildScope, port = 8080) {
       const sandboxId = await deriveSandboxId(scope);
       return signedFetch(baseUrl, secret, 'preview', { scope, sandboxId, port }) as Promise<{ url: string; port: number; expiresWithSandbox: boolean }>;
+    },
+    async startProcess(scope: BuildScope, command: SandboxCommand, port?: number) {
+      const sandboxId = await deriveSandboxId(scope);
+      return signedFetch(baseUrl, secret, 'process/start', { scope, sandboxId, ...command, port }) as unknown as Promise<{ processId: string; status: string; pid: number | null }>;
+    },
+    async killProcess(scope: BuildScope, processId: string) {
+      const sandboxId = await deriveSandboxId(scope);
+      return signedFetch(baseUrl, secret, 'process/kill', { scope, sandboxId, processId });
     },
     async destroy(scope: BuildScope) {
       const sandboxId = await deriveSandboxId(scope);

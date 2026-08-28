@@ -13,7 +13,7 @@ Questa repository contiene una superficie prodotto eseguibile e il primo kernel 
 - orchestrazione job/task, artifact/evidence registry, repo index, patch/recovery policy e sandbox adapter separato;
 - etichette esplicite per distinguere funzioni demo, adapter pronti e servizi distribuiti.
 
-Sandbox, provider AI, GitHub, billing e deploy delle applicazioni generate richiedono ancora account/configurazioni esterne. Lo stato verificato è in `docs/implementation-status.md`.
+Il sandbox Cloudflare isolato è distribuito e collegato; provider AI, GitHub, billing, mobile, voice e deploy delle applicazioni generate richiedono ancora connessioni/configurazioni esterne. Lo stato verificato è in `docs/implementation-status.md`.
 
 ## Sviluppo
 

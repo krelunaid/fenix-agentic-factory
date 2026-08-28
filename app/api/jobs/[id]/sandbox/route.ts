@@ -22,7 +22,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!access) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (!canOperate(access.job.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   if (!env.SANDBOX_WORKER_URL || !env.SANDBOX_CONTROL_TOKEN) return NextResponse.json({ error: 'sandbox_provider_not_configured' }, { status: 503 });
-  const input = await request.json().catch(() => null) as { action?: string; command?: SandboxCommand; port?: number } | null;
+  const input = await request.json().catch(() => null) as { action?: string; command?: SandboxCommand; port?: number; processId?: string } | null;
   const scope = { organizationId: access.job.organization_id, projectId: access.job.project_id, jobId: id };
   const sandboxId = await deriveSandboxId(scope);
   const client = createSandboxClient(env.SANDBOX_WORKER_URL, env.SANDBOX_CONTROL_TOKEN);
@@ -43,6 +43,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         env.DB.prepare("INSERT INTO preview_sessions (id,project_id,job_id,sandbox_id,url,port,status,expires_at,created_at) VALUES (?,?,?,?,?,?,'ready',?,?)").bind(previewId, access.job.project_id, id, sandboxId, preview.url, preview.port, now + 600_000, now),
       ]);
       return NextResponse.json({ id: previewId, ...preview, expiresAt: now + 600_000 }, { status: 201 });
+    }
+    if (input?.action === 'start-preview' && input.command) {
+      const port = input.port ?? 8080;
+      const process = await client.startProcess(scope, input.command, port);
+      const preview = await client.preview(scope, port);
+      const previewId = crypto.randomUUID();
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO sandbox_sessions (id,project_id,job_id,provider,provider_ref,status,constraints_json,lease_expires_at,created_at,updated_at) VALUES (?,?,?,?,?,'ready',?,?,?,?) ON CONFLICT(id) DO UPDATE SET status='ready',updated_at=excluded.updated_at,lease_expires_at=excluded.lease_expires_at").bind(sandboxId, access.job.project_id, id, 'cloudflare-sandbox', sandboxId, JSON.stringify({ processId: process.processId, port }), now + 600_000, now, now),
+        env.DB.prepare("INSERT INTO preview_sessions (id,project_id,job_id,sandbox_id,url,port,status,expires_at,created_at) VALUES (?,?,?,?,?,?,'ready',?,?)").bind(previewId, access.job.project_id, id, sandboxId, preview.url, port, now + 600_000, now),
+      ]);
+      return NextResponse.json({ id: previewId, processId: process.processId, ...preview, expiresAt: now + 600_000 }, { status: 201 });
+    }
+    if (input?.action === 'kill-process' && typeof input.processId === 'string') {
+      await client.killProcess(scope, input.processId);
+      return NextResponse.json({ processId: input.processId, status: 'killed' });
     }
     if (input?.action === 'destroy') {
       await client.destroy(scope);

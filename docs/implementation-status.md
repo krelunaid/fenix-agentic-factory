@@ -11,9 +11,9 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 4 - Conversation e brief | PARTIAL | Brief versionato, API protetta e schema conversazioni/messaggi; streaming AI da collegare |
 | 5 - Task graph | PARTIAL | DAG, dipendenze, claim atomico, tentativi e state machine persistenti |
 | 6 - Queue ed eventi | PARTIAL | Worker contract, completion, replay SSE e budget gate; manca una queue esterna durabile |
-| 7 - Sandbox provider | PARTIAL | Worker Cloudflare Sandbox isolato, richieste HMAC, scope deterministico e command policy; deploy provider richiede account/configurazione |
-| 8 - Scaffold full-stack | PARTIAL | Template React/Worker/D1 versionato e DAG qualità; provisioning automatico da collegare |
-| 9 - Preview Engine | PARTIAL | Device frame e contratto preview/tunnel persistente; runtime provider non distribuito |
+| 7 - Sandbox provider | PASS | Worker Cloudflare Sandbox distribuito, HMAC, scope deterministico, command/path policy, health, signed exec e destroy verificati |
+| 8 - Scaffold full-stack | PASS | Template React/Worker/D1 deterministico con lockfile; install, typecheck, lint, unit test e build verificati da zero |
+| 9 - Preview Engine | PASS | Processo sandbox persistente, port readiness, quick tunnel, HTTP 200/body atteso, device frame e cleanup verificati |
 | 10 - Repo index e patch | PARTIAL | Indice persistente, normalizzazione path, scope/freeze/precondition policy con test; applicatore patch sandbox da collegare |
 | 11 - QA ed evidence | PARTIAL | Registry artifact, quality run, evidence fail-closed e defect lifecycle; runner browser/a11y esterno da collegare |
 | 12 - Recovery e fork | PARTIAL | Recovery graph, snapshot artifact contract e rollback planning; restore fisico provider da collegare |
@@ -39,11 +39,13 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Migrazioni D1: 52 tabelle, indici e foreign key generate e ispezionate.
 - Orchestratore: transizioni condizionali, human gate, task claim e result contract verificati da typecheck/build.
 - Kernel di policy: 15 test su Build Plane, AI routing, integrazioni, source/deploy, mobile, billing, voce, agenti, MCP, RBAC, visual mapping e certification.
-- Sandbox Worker: typecheck PASS; nessuna esecuzione dichiarata perché il provider non è ancora distribuito/configurato.
+- Sandbox Worker: typecheck e deploy PASS; health 200, richiesta non firmata 401, signed exec isolata 200 con output atteso, destroy 200.
+- Preview Engine: process start 201/running, port readiness, tunnel 200 con body atteso, process kill e sandbox destroy verificati.
+- Scaffold full-stack: generazione isolata da template, installazione lockfile e gate typecheck/lint/unit/build tutti PASS.
 - Schema replay: 52 tabelle applicate in SQLite isolato, `foreign_key_check` con zero errori.
 - Supply-chain audit production: zero vulnerabilità note dopo aggiornamento Next.js 16.3.3.
 - Secret pattern scan repository: nessuna credenziale rilevata.
 
 ## Prossimo incremento consigliato
 
-Distribuire e configurare i provider esterni (sandbox/container, blob storage, AI, OAuth GitHub/MCP, deploy, mobile, payment e voice), quindi eseguire C1-C15 per tre run con evidence reali. Gli adapter restano dichiarati non operativi finché queste verifiche non passano.
+Collegare blob storage, AI, OAuth GitHub/MCP, deploy, mobile, payment e voice, quindi eseguire C1-C15 per tre run con evidence reali. Gli adapter restano dichiarati non operativi finché queste verifiche non passano.

@@ -18,7 +18,8 @@ Progetto greenfield separato. Non deriva né modifica repository preesistenti. S
 | Backend e dati condivisi | Partial | D1 con 52 tabelle core e migrazioni versionate |
 | Auth e RBAC | Partial | Identità ChatGPT e ruolo owner; ruoli aggiuntivi previsti nello schema |
 | Queue e worker | Partial | Job/task D1, claim atomico, tentativi e completion; queue esterna non collegata |
-| Sandbox | Adapter pronto, provider non distribuito | Worker separato, HMAC, scope, allowlist, path policy e tunnel contract; nessun codice utente ancora eseguito |
+| Sandbox | Operativo | Worker Cloudflare separato, HMAC, scope, allowlist, path policy; signed exec e destroy verificati |
+| Preview runtime | Operativo | Processo persistente, port readiness, quick tunnel HTTP e cleanup verificati |
 | Scaffold | Partial | Template web TypeScript con React, Worker, D1, health check e quality DAG |
 | Repo, QA e recovery | Partial | Indice, patch policy, artifact/evidence/defect registry e recovery graph con test kernel |
 | Platform Plane | Partial | AI routing, provider connections, source sync, release/domain, mobile, billing, voice, agents, MCP, collaboration e visual records |
@@ -34,7 +35,7 @@ Progetto greenfield separato. Non deriva né modifica repository preesistenti. S
 - Lint: PASS (zero errori e zero warning, exit code 0).
 - Typecheck: PASS (exit code 0).
 - Kernel di policy: 15 test PASS.
-- Sandbox Worker: typecheck PASS; deploy non effettuato senza provider account/configurazione.
+- Sandbox Worker: deploy, health, unauthorized rejection, signed exec isolata e destroy PASS.
 - Replay migrazioni: 52 tabelle e zero errori foreign key.
 - Audit dipendenze production: zero vulnerabilità note.
 

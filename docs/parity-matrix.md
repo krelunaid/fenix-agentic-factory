@@ -4,7 +4,8 @@
 | --- | --- | --- | --- |
 | Idea -> brief | Partial | Composer, brief D1 versionato e API protetta | Estrazione AI e approval UI |
 | Workspace conversazionale | Partial | UI a tre pannelli | Persistenza conversazioni |
-| Preview web | Partial | Switch device, sessioni D1 e tunnel provider contract | Distribuzione runtime isolato |
+| Preview web | Operativo | Runtime isolato, process readiness, tunnel HTTP verificato e device frames | URL stabile/custom domain opzionale |
+| Scaffold full-stack | Operativo | Template React/Worker/D1 riproducibile; install, typecheck, lint, test e build da zero | Catalogo template aggiuntivi opzionale |
 | Test ed evidence | Partial | Quality/evidence/defect API fail-closed | Runner e blob storage distribuiti |
 | Patch localizzata | Partial | Repo index e policy scope/freeze/precondition testate | Applicazione sandbox e review visuale |
 | GitHub | Partial | Sync records e push/secret/conflict policy | GitHub App/OAuth e worker Git |

@@ -31,7 +31,7 @@
 - Patch con path normalization, file freeze, precondition hash e divieto delete di default.
 - Rollback solo su antenati dello stesso project/job; esecuzione distruttiva separata dal planning.
 
-Il worker sandbox è implementato ma non distribuito: nessuna esecuzione reale viene dichiarata finché URL e segreto provider non sono configurati e verificati.
+Il worker sandbox è distribuito e il Control Plane usa URL e segreto gestiti dall'hosting. Un test firmato ha eseguito un comando isolato e distrutto subito la sandbox; il test non dimostra ancora egress deny-by-default, limiti sotto carico o backup/restore.
 
 ## Controlli Platform Plane
 

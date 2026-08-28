@@ -5,8 +5,12 @@
   "healthPath": "/api/health",
   "requiredFiles": [
     "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
     "tsconfig.json",
     "vite.config.ts",
+    "vitest.config.ts",
+    "eslint.config.mjs",
     "wrangler.jsonc",
     "src/App.tsx",
     "worker/index.ts",

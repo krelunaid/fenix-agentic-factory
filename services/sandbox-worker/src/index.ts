@@ -11,6 +11,7 @@ type Env = {
 type Scope = { organizationId: string; projectId: string; jobId: string };
 type ScopedRequest = { sandboxId: string; scope: Scope };
 type ExecRequest = ScopedRequest & { executable: string; args?: string[]; cwd?: string; timeoutMs?: number };
+type StartProcessRequest = ExecRequest & { port?: number };
 
 const allowedExecutables = new Set(['node', 'pnpm', 'npm', 'git', 'tsc', 'eslint', 'vitest', 'playwright']);
 const identifierPattern = /^[a-zA-Z0-9_-]{1,96}$/;
@@ -61,6 +62,17 @@ function validateWorkspacePath(value: string) {
   return value;
 }
 
+async function retry<T>(operation: () => Promise<T>, attempts = 3) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try { return await operation(); } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, attempt * 300));
+    }
+  }
+  throw lastError;
+}
+
 async function parseScopedRequest(rawBody: string) {
   let input: unknown;
   try {
@@ -108,6 +120,29 @@ export default {
         return json({ stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode, success: result.success });
       }
 
+      if (url.pathname === '/v1/sandboxes/process/start') {
+        const command = input as unknown as StartProcessRequest;
+        if (!allowedExecutables.has(command.executable) || !Array.isArray(command.args ?? [])) throw new Error('command_not_allowed');
+        if ((command.args ?? []).length > 64) throw new Error('too_many_arguments');
+        if (command.port !== undefined && (!Number.isInteger(command.port) || command.port < 1024 || command.port > 65535)) {
+          throw new Error('invalid_port');
+        }
+        const cwd = validateWorkspacePath(command.cwd ?? '/workspace');
+        const shellCommand = `cd ${quoteShell(cwd)} && exec ${quoteShell(command.executable)} ${(command.args ?? []).map(quoteShell).join(' ')}`;
+        const process = await sandbox.startProcess(shellCommand, { autoCleanup: false });
+        if (command.port !== undefined) {
+          await process.waitForPort(command.port, { mode: 'tcp', timeout: Math.min(Math.max(command.timeoutMs ?? 120_000, 1_000), 300_000) });
+        }
+        return json({ processId: process.id, status: process.status, pid: process.pid ?? null }, 201);
+      }
+
+      if (url.pathname === '/v1/sandboxes/process/kill') {
+        const processId = String(input.processId ?? '');
+        if (!identifierPattern.test(processId)) throw new Error('invalid_process_id');
+        await sandbox.killProcess(processId);
+        return json({ processId, status: 'killed' });
+      }
+
       if (url.pathname === '/v1/sandboxes/write') {
         const path = validateWorkspacePath(String(input.path ?? ''));
         const content = String(input.content ?? '');
@@ -125,7 +160,7 @@ export default {
       if (url.pathname === '/v1/sandboxes/preview') {
         const port = Number(input.port ?? 8080);
         if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('invalid_port');
-        const tunnel = await sandbox.tunnels.get(port);
+        const tunnel = await retry(() => sandbox.tunnels.get(port));
         return json({ url: tunnel.url, port, expiresWithSandbox: true });
       }
 
@@ -136,7 +171,7 @@ export default {
       return json({ error: 'not_found' }, 404);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'sandbox_error';
-      const clientErrors = ['invalid_json', 'invalid_scope', 'sandbox_scope_mismatch', 'command_not_allowed', 'too_many_arguments', 'invalid_argument', 'path_outside_workspace', 'payload_too_large', 'invalid_port'];
+      const clientErrors = ['invalid_json', 'invalid_scope', 'sandbox_scope_mismatch', 'command_not_allowed', 'too_many_arguments', 'invalid_argument', 'path_outside_workspace', 'payload_too_large', 'invalid_port', 'invalid_process_id'];
       return json({ error: message }, clientErrors.includes(message) ? 400 : 500);
     }
   },
