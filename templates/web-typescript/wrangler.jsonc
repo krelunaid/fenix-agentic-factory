@@ -1,0 +1,7 @@
+{
+  "name": "{{projectSlug}}",
+  "main": "worker/index.ts",
+  "compatibility_date": "{{compatibilityDate}}",
+  "observability": { "enabled": true },
+  "d1_databases": [{ "binding": "DB", "database_name": "{{projectSlug}}", "database_id": "replace-during-provisioning" }]
+}

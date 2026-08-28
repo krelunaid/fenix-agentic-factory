@@ -8,15 +8,15 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 1 - Brand FENIX | PASS | Nome, metadata e copy originali |
 | 2 - Design system e shell | PARTIAL | Home e workspace responsive implementati; manca suite visuale |
 | 3 - Identity e project core | PARTIAL | Identità ChatGPT, D1, organizzazioni, membership, CRUD progetto e audit |
-| 4 - Conversation e brief | PARTIAL | Brief versionato e API protetta; conversazioni persistenti da aggiungere |
+| 4 - Conversation e brief | PARTIAL | Brief versionato, API protetta e schema conversazioni/messaggi; streaming AI da collegare |
 | 5 - Task graph | PARTIAL | DAG, dipendenze, claim atomico, tentativi e state machine persistenti |
 | 6 - Queue ed eventi | PARTIAL | Worker contract, completion, replay SSE e budget gate; manca una queue esterna durabile |
-| 7 - Sandbox provider | PLANNED |  |
-| 8 - Scaffold full-stack | PLANNED |  |
-| 9 - Preview Engine | PARTIAL | Device frame interattivo; runtime generato non collegato |
-| 10 - Repo index e patch | PLANNED |  |
-| 11 - QA ed evidence | PARTIAL | Surface UI; runner reale non collegato |
-| 12 - Recovery e fork | PLANNED |  |
+| 7 - Sandbox provider | PARTIAL | Worker Cloudflare Sandbox isolato, richieste HMAC, scope deterministico e command policy; deploy provider richiede account/configurazione |
+| 8 - Scaffold full-stack | PARTIAL | Template React/Worker/D1 versionato e DAG qualità; provisioning automatico da collegare |
+| 9 - Preview Engine | PARTIAL | Device frame e contratto preview/tunnel persistente; runtime provider non distribuito |
+| 10 - Repo index e patch | PARTIAL | Indice persistente, normalizzazione path, scope/freeze/precondition policy con test; applicatore patch sandbox da collegare |
+| 11 - QA ed evidence | PARTIAL | Registry artifact, quality run, evidence fail-closed e defect lifecycle; runner browser/a11y esterno da collegare |
+| 12 - Recovery e fork | PARTIAL | Recovery graph, snapshot artifact contract e rollback planning; restore fisico provider da collegare |
 | 13 - AI Gateway e costi | PLANNED |  |
 | 14 - GitHub | PLANNED |  |
 | 15 - Deploy e domini | PARTIAL | Gate UI, nessun provider collegato |
@@ -36,9 +36,11 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Build di produzione: PASS.
 - Lint: PASS, zero problemi.
 - Metadata social: asset 1200 x 630 verificato.
-- Migrazioni D1: 13 tabelle, indici e foreign key generate e ispezionate.
+- Migrazioni D1: 24 tabelle, indici e foreign key generate e ispezionate.
 - Orchestratore: transizioni condizionali, human gate, task claim e result contract verificati da typecheck/build.
+- Build Plane kernel: 6 test su sandbox scope, repository index, patch policy, scaffold DAG, quality gate e recovery graph.
+- Sandbox Worker: typecheck PASS; nessuna esecuzione dichiarata perché il provider non è ancora distribuito/configurato.
 
 ## Prossimo incremento consigliato
 
-Identity, organizzazioni e project core con persistenza server-side, tenant isolation e audit. Le metriche dimostrative non devono diventare dati operativi finché i relativi servizi non sono collegati.
+Collegare storage artifact e runner sandbox distribuito, quindi integrare AI Gateway e cost ledger senza trasformare metriche dimostrative in dati operativi.

@@ -1,0 +1,22 @@
+{
+  "templateVersion": "1.0.0",
+  "runtime": "cloudflare-workers",
+  "packageManager": "pnpm",
+  "healthPath": "/api/health",
+  "requiredFiles": [
+    "package.json",
+    "tsconfig.json",
+    "vite.config.ts",
+    "wrangler.jsonc",
+    "src/App.tsx",
+    "worker/index.ts",
+    "db/schema.sql",
+    "tests/health.test.ts"
+  ],
+  "qualityCommands": {
+    "typecheck": ["pnpm", "typecheck"],
+    "lint": ["pnpm", "lint"],
+    "unit": ["pnpm", "test"],
+    "build": ["pnpm", "build"]
+  }
+}

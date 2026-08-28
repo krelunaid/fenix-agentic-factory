@@ -1,5 +1,19 @@
+packages:
+  - services/*
+
 allowBuilds:
-  esbuild: set this to true or false
-  sharp: set this to true or false
-  unrs-resolver: set this to true or false
-  workerd: set this to true or false
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+  workerd: true
+
+minimumReleaseAgeExclude:
+  - '@cloudflare/workerd-darwin-64@1.20260828.1'
+  - '@cloudflare/workerd-darwin-arm64@1.20260828.1'
+  - '@cloudflare/workerd-linux-64@1.20260828.1'
+  - '@cloudflare/workerd-linux-arm64@1.20260828.1'
+  - '@cloudflare/workerd-windows-64@1.20260828.1'
+  - '@cloudflare/workers-types@5.20260828.1'
+  - miniflare@5.20260828.0-alpha
+  - workerd@1.20260828.1
+  - wrangler@4.127.1

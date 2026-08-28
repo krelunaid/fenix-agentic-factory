@@ -134,3 +134,129 @@ export const usageLedger = sqliteTable('usage_ledger', {
   amount: real('amount').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 }, (table) => [index('idx_usage_org_created').on(table.organizationId, table.createdAt)]);
+
+export const conversations = sqliteTable('conversations', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  title: text('title').notNull(),
+  status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
+  createdBy: text('created_by').notNull().references(() => users.id),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+}, (table) => [index('idx_conversations_project_updated').on(table.projectId, table.updatedAt)]);
+
+export const messages = sqliteTable('messages', {
+  id: text('id').primaryKey(),
+  conversationId: text('conversation_id').notNull().references(() => conversations.id),
+  role: text('role', { enum: ['user', 'assistant', 'system', 'tool'] }).notNull(),
+  content: text('content').notNull(),
+  status: text('status', { enum: ['complete', 'streaming', 'failed'] }).notNull().default('complete'),
+  metadataJson: text('metadata_json').notNull().default('{}'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+}, (table) => [index('idx_messages_conversation_created').on(table.conversationId, table.createdAt)]);
+
+export const sandboxSessions = sqliteTable('sandbox_sessions', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  jobId: text('job_id').notNull().references(() => jobs.id),
+  provider: text('provider').notNull(),
+  providerRef: text('provider_ref'),
+  status: text('status', { enum: ['requested', 'provisioning', 'ready', 'failed', 'destroyed'] }).notNull(),
+  constraintsJson: text('constraints_json').notNull().default('{}'),
+  leaseExpiresAt: integer('lease_expires_at', { mode: 'timestamp_ms' }),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+}, (table) => [index('idx_sandboxes_job_status').on(table.jobId, table.status)]);
+
+export const artifacts = sqliteTable('artifacts', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  jobId: text('job_id').notNull().references(() => jobs.id),
+  taskId: text('task_id').references(() => tasks.id),
+  kind: text('kind').notNull(),
+  storageKey: text('storage_key').notNull(),
+  sha256: text('sha256').notNull(),
+  byteSize: integer('byte_size').notNull(),
+  mediaType: text('media_type').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+}, (table) => [uniqueIndex('idx_artifacts_storage_key').on(table.storageKey), index('idx_artifacts_job_kind').on(table.jobId, table.kind)]);
+
+export const previewSessions = sqliteTable('preview_sessions', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  jobId: text('job_id').notNull().references(() => jobs.id),
+  sandboxId: text('sandbox_id').notNull().references(() => sandboxSessions.id),
+  url: text('url'),
+  port: integer('port').notNull(),
+  status: text('status', { enum: ['starting', 'ready', 'failed', 'expired'] }).notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+}, (table) => [index('idx_previews_job_status').on(table.jobId, table.status)]);
+
+export const repositories = sqliteTable('repositories', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  provider: text('provider').notNull(),
+  externalRef: text('external_ref'),
+  defaultBranch: text('default_branch').notNull().default('main'),
+  headRevision: text('head_revision'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+}, (table) => [uniqueIndex('idx_repositories_project').on(table.projectId)]);
+
+export const repositoryFiles = sqliteTable('repository_files', {
+  repositoryId: text('repository_id').notNull().references(() => repositories.id),
+  path: text('path').notNull(),
+  sha256: text('sha256').notNull(),
+  byteSize: integer('byte_size').notNull(),
+  language: text('language').notNull(),
+  generated: integer('generated', { mode: 'boolean' }).notNull().default(false),
+  indexedAt: integer('indexed_at', { mode: 'timestamp_ms' }).notNull(),
+}, (table) => [uniqueIndex('idx_repository_files_path').on(table.repositoryId, table.path), index('idx_repository_files_language').on(table.repositoryId, table.language)]);
+
+export const recoveryPoints = sqliteTable('recovery_points', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  jobId: text('job_id').notNull().references(() => jobs.id),
+  parentId: text('parent_id'),
+  sourceRevision: text('source_revision').notNull(),
+  artifactId: text('artifact_id').notNull().references(() => artifacts.id),
+  createdBy: text('created_by').notNull().references(() => users.id),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+}, (table) => [index('idx_recovery_job_created').on(table.jobId, table.createdAt)]);
+
+export const qualityRuns = sqliteTable('quality_runs', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  jobId: text('job_id').notNull().references(() => jobs.id),
+  taskId: text('task_id').references(() => tasks.id),
+  kind: text('kind').notNull(),
+  status: text('status', { enum: ['running', 'passed', 'failed', 'skipped'] }).notNull(),
+  summary: text('summary').notNull().default(''),
+  durationMs: integer('duration_ms'),
+  startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
+  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+}, (table) => [index('idx_quality_runs_job_kind').on(table.jobId, table.kind)]);
+
+export const evidence = sqliteTable('evidence', {
+  id: text('id').primaryKey(),
+  qualityRunId: text('quality_run_id').notNull().references(() => qualityRuns.id),
+  artifactId: text('artifact_id').references(() => artifacts.id),
+  claim: text('claim').notNull(),
+  status: text('status', { enum: ['verified', 'failed', 'unverified'] }).notNull(),
+  detailsJson: text('details_json').notNull().default('{}'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+}, (table) => [index('idx_evidence_quality_run').on(table.qualityRunId)]);
+
+export const defects = sqliteTable('defects', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  jobId: text('job_id').notNull().references(() => jobs.id),
+  qualityRunId: text('quality_run_id').references(() => qualityRuns.id),
+  severity: text('severity', { enum: ['critical', 'high', 'medium', 'low'] }).notNull(),
+  status: text('status', { enum: ['open', 'triaged', 'fixing', 'resolved', 'accepted'] }).notNull(),
+  title: text('title').notNull(),
+  details: text('details').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  resolvedAt: integer('resolved_at', { mode: 'timestamp_ms' }),
+}, (table) => [index('idx_defects_job_status').on(table.jobId, table.status)]);

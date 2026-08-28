@@ -21,7 +21,14 @@
 | Deploy non autorizzato | Alto | Human gate, RBAC, artifact firmato e audit |
 | Cost loop | Medio/alto | Budget, hard cap, circuit breaker e attribuzione task |
 
-## Stato della slice
+## Controlli aggiunti nel Build Plane
 
-La slice iniziale non esegue codice utente, non accetta file, non possiede credenziali e non invia richieste a provider. La persistenza locale contiene solo nomi e descrizioni demo inseriti dall'utente.
+- Sandbox ID deterministico e vincolato a organizzazione/progetto/job.
+- Richieste Control Plane → Sandbox firmate HMAC con finestra anti-replay di 60 secondi.
+- Comandi strutturati con allowlist, argomenti quotati, timeout massimo e cwd confinata a `/workspace`.
+- Sessione shell implicita disabilitata; trasporto RPC e lease breve.
+- Artifact key tenant-scoped, hash SHA-256 obbligatorio ed evidence fail-closed.
+- Patch con path normalization, file freeze, precondition hash e divieto delete di default.
+- Rollback solo su antenati dello stesso project/job; esecuzione distruttiva separata dal planning.
 
+Il worker sandbox è implementato ma non distribuito: nessuna esecuzione reale viene dichiarata finché URL e segreto provider non sono configurati e verificati.

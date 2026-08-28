@@ -4,15 +4,16 @@ FENIX è una software factory agentica: trasforma una richiesta naturale in brie
 
 ## Stato corrente
 
-Questa repository contiene la prima superficie prodotto eseguibile:
+Questa repository contiene una superficie prodotto eseguibile e il primo kernel del Build Plane:
 
 - home con composer e progetti recenti;
-- creazione di un progetto demo con persistenza sul dispositivo;
+- identità ChatGPT, organizzazioni e progetti persistenti su D1;
 - workspace a tre pannelli;
 - Product Brief, preview responsive, file, quality gate e deploy state;
-- etichette esplicite per distinguere funzioni demo da servizi reali.
+- orchestrazione job/task, artifact/evidence registry, repo index, patch/recovery policy e sandbox adapter separato;
+- etichette esplicite per distinguere funzioni demo, adapter pronti e servizi distribuiti.
 
-Non sono ancora collegati autenticazione, database condiviso, queue, sandbox, provider AI, GitHub, billing o deploy di applicazioni generate. Lo stato completo è in `docs/implementation-status.md`.
+Sandbox, provider AI, GitHub, billing e deploy delle applicazioni generate richiedono ancora account/configurazioni esterne. Lo stato verificato è in `docs/implementation-status.md`.
 
 ## Sviluppo
 
@@ -23,6 +24,8 @@ pnpm install
 pnpm dev
 pnpm build
 pnpm lint
+pnpm typecheck
+pnpm test
 ```
 
 ## Principi
@@ -31,4 +34,3 @@ pnpm lint
 - Produzione, costi e side effect richiedono approvazione.
 - Control Plane e codice utente restano separati.
 - Ogni capacità mostrata deve dichiarare se è reale, simulata o non collegata.
-
