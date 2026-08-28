@@ -24,7 +24,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 17 - Mobile Expo | PARTIAL | Mobile profile, native compatibility/permission policy e build records; EAS/native builder non collegato |
 | 18 - Billing | PARTIAL | Account/subscription/credit ledger, idempotenza, hard cap e reconciliation policy; payment provider non collegato |
 | 19 - Voce | PARTIAL | Sessioni, it/en, retention opt-in, ambiguity/risk confirmation e text fallback; STT/TTS streaming non collegato |
-| 20 - Agent Studio | PARTIAL | Profili/versioni, tool/knowledge/memory/guardrail contract, run trace/cost; worker AI non collegato |
+| 20 - Agent Studio | PARTIAL | Profili/versioni e managed inference reali con trace/cost cap; restano tool execution, knowledge retrieval, subagent sandbox ed eval publish |
 | 21 - MCP | PARTIAL | Connection registry, permission/rate-limit/output policy e revoca; OAuth server e transport non distribuiti |
 | 22 - Team | PARTIAL | Project members, ruoli, commenti/resolve e notifiche schema; delivery notifiche e multi-approval avanzato da collegare |
 | 23 - Visual select | PARTIAL | DOM/source selection record, freeze policy, crop artifact e design token validation; browser mapping/diff runner non collegato |

@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { NextResponse } from 'next/server';
 import { canOperate, requireProjectAccess } from '../../../../../lib/core-access';
 import { nextAgentVersion } from '../../../../../lib/agents/policy';
+import { invokeManagedAI } from '../../../../../lib/ai-gateway/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const access = await requireProjectAccess(id);
   if (!access) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (!canOperate(access.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  const input = await request.json().catch(() => null) as { action?: unknown; name?: unknown; agentId?: unknown; instructions?: unknown; tools?: unknown; knowledge?: unknown; memoryPolicy?: unknown; guardrails?: unknown; versionId?: unknown } | null;
+  const input = await request.json().catch(() => null) as { action?: unknown; name?: unknown; agentId?: unknown; instructions?: unknown; tools?: unknown; knowledge?: unknown; memoryPolicy?: unknown; guardrails?: unknown; versionId?: unknown; message?: unknown; maxTokens?: unknown } | null;
   const now = Date.now();
   if (input?.action === 'create-profile' && typeof input.name === 'string') {
     const agentId = crypto.randomUUID();
@@ -37,13 +38,32 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ id: versionId, agentId: input.agentId, version }, { status: 201 });
   }
   if (input?.action === 'plan-run' && typeof input.versionId === 'string') {
-    const version = await env.DB.prepare('SELECT v.id FROM agent_versions v JOIN agent_profiles a ON a.id=v.agent_id WHERE v.id=? AND a.organization_id=? AND a.project_id=?').bind(input.versionId, access.organizationId, id).first();
-    const credential = await env.DB.prepare("SELECT id FROM ai_credentials WHERE organization_id=? AND status='active' LIMIT 1").bind(access.organizationId).first();
+    const version = await env.DB.prepare('SELECT v.id,v.instructions,v.guardrails_json FROM agent_versions v JOIN agent_profiles a ON a.id=v.agent_id WHERE v.id=? AND a.organization_id=? AND a.project_id=?').bind(input.versionId, access.organizationId, id).first<{ id: string; instructions: string; guardrails_json: string }>();
+    const managed = Boolean(env.AI_WORKER_URL && env.AI_CONTROL_TOKEN);
+    const credential = managed ? { id: 'managed' } : await env.DB.prepare("SELECT id FROM ai_credentials WHERE organization_id=? AND status='active' LIMIT 1").bind(access.organizationId).first();
     if (!version || !credential) return NextResponse.json({ error: 'agent_version_or_ai_provider_not_ready' }, { status: 503 });
     const runId = crypto.randomUUID();
     const traceId = crypto.randomUUID();
     await env.DB.prepare("INSERT INTO agent_runs (id,agent_version_id,project_id,status,trace_id,cost,evaluation_json,created_at) VALUES (?,?,?,'queued',?,0,'{}',?)").bind(runId, input.versionId, id, traceId, now).run();
-    return NextResponse.json({ id: runId, traceId, status: 'queued', execution: 'agent_worker_required' }, { status: 202 });
+    if (!managed || typeof input.message !== 'string') return NextResponse.json({ id: runId, traceId, status: 'queued', execution: managed ? 'message_required' : 'external_agent_worker_required' }, { status: 202 });
+    const guardrails = JSON.parse(version.guardrails_json) as { maxCostPerRun?: number; maxSteps?: number };
+    if (!Number.isFinite(guardrails.maxCostPerRun) || Number(guardrails.maxCostPerRun) <= 0 || Number(guardrails.maxSteps) < 1) return NextResponse.json({ error: 'invalid_agent_guardrails', id: runId }, { status: 409 });
+    try {
+      const result = await invokeManagedAI(env.AI_WORKER_URL!, env.AI_CONTROL_TOKEN!, { organizationId: access.organizationId, projectId: id, requestId: runId, capability: 'text', prompt: `${version.instructions}\n\nUser request:\n${input.message.slice(0, 20_000)}`, maxTokens: typeof input.maxTokens === 'number' ? Math.min(Math.max(Math.round(input.maxTokens), 1), 2048) : 512 });
+      const provider = result.result as { response?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } } | undefined;
+      const promptTokens = Number(provider?.usage?.prompt_tokens ?? 0);
+      const completionTokens = Number(provider?.usage?.completion_tokens ?? 0);
+      const cost = (promptTokens * 0.0509 + completionTokens * 0.335) / 1_000_000;
+      if (cost > Number(guardrails.maxCostPerRun)) {
+        await env.DB.prepare("UPDATE agent_runs SET status='blocked',cost=?,evaluation_json=? WHERE id=?").bind(cost, JSON.stringify({ reason: 'cost_cap_exceeded', promptTokens, completionTokens }), runId).run();
+        return NextResponse.json({ error: 'agent_cost_cap_exceeded', id: runId, traceId }, { status: 409 });
+      }
+      await env.DB.prepare("UPDATE agent_runs SET status='completed',cost=?,evaluation_json=? WHERE id=?").bind(cost, JSON.stringify({ promptTokens, completionTokens, provider: 'cloudflare-workers-ai', guardrailsApplied: true }), runId).run();
+      return NextResponse.json({ id: runId, traceId, status: 'completed', response: provider?.response ?? result, cost });
+    } catch (error) {
+      await env.DB.prepare("UPDATE agent_runs SET status='failed',evaluation_json=? WHERE id=?").bind(JSON.stringify({ error: error instanceof Error ? error.message : 'agent_inference_failed' }), runId).run();
+      return NextResponse.json({ error: 'agent_inference_failed', id: runId, traceId }, { status: 502 });
+    }
   }
   return NextResponse.json({ error: 'invalid_action' }, { status: 400 });
 }

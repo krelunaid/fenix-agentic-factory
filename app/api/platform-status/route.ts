@@ -24,7 +24,7 @@ export async function GET() {
     mobile: 'profile_ready_requires_native_builder',
     billing: 'ledger_ready_requires_payment_provider',
     voice: 'policy_ready_requires_streaming_provider',
-    agentStudio: 'versioning_ready_requires_ai_worker',
+    agentStudio: env.AI_WORKER_URL && env.AI_CONTROL_TOKEN ? 'managed_inference_connected' : 'versioning_ready_requires_ai_worker',
     mcp: 'permission_model_ready_requires_oauth_provider',
     collaboration: 'connected',
     visualSelect: 'mapping_contract_ready_requires_browser_runner',
