@@ -11,12 +11,12 @@ Progetto greenfield separato. Non deriva né modifica repository preesistenti. S
 | Area | Stato | Evidenza |
 | --- | --- | --- |
 | Home e composer | Funzionante | Inserimento prompt, template rapidi e creazione progetto |
-| Progetti recenti | Funzionante in locale | Tre progetti demo e nuovi record in `localStorage` |
+| Progetti recenti | Persistenza condivisa | D1, identità ChatGPT, organizzazione e controllo membership server-side |
 | Workspace | Funzionante | Conversazione, brief, preview e inspector |
 | Device preview | Funzionante | Desktop, tablet e mobile |
 | File, test, deploy | Dimostrativo | Tab interattive con dati dichiaratamente simulati |
-| Backend e dati condivisi | Non implementato | Nessun database collegato |
-| Auth e RBAC | Non implementato | Nessuna identità applicativa |
+| Backend e dati condivisi | Partial | D1 con 10 tabelle core e migrazione versionata |
+| Auth e RBAC | Partial | Identità ChatGPT e ruolo owner; ruoli aggiuntivi previsti nello schema |
 | Queue e worker | Non implementato | Nessun job durevole |
 | Sandbox | Non implementato | Nessun codice utente eseguito |
 | AI Gateway | Non implementato | Nessun provider o segreto |
@@ -31,6 +31,6 @@ Progetto greenfield separato. Non deriva né modifica repository preesistenti. S
 
 ## Rischi immediati
 
-- I dati dei progetti sono locali al browser e non adatti alla collaborazione.
+- Collaboration UI e inviti non sono ancora implementati, benché lo schema sia tenant-aware.
 - Gli indicatori di build, costo e test sono contenuto dimostrativo, non telemetry.
 - Prima di accettare codice o file utente servono sandbox, limiti risorsa, egress policy e scansione upload.

@@ -7,9 +7,9 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 0 - Baseline greenfield | PASS | Stack, confini e capacità mancanti documentati |
 | 1 - Brand FENIX | PASS | Nome, metadata e copy originali |
 | 2 - Design system e shell | PARTIAL | Home e workspace responsive implementati; manca suite visuale |
-| 3 - Identity e project core | PLANNED | Persistenza locale non sostituisce auth/DB |
-| 4 - Conversation e brief | PARTIAL | Interfaccia e brief demo; manca schema persistente/versionato |
-| 5 - Task graph | PLANNED |  |
+| 3 - Identity e project core | PARTIAL | Identità ChatGPT, D1, organizzazioni, membership, CRUD progetto e audit |
+| 4 - Conversation e brief | PARTIAL | Brief versionato e API protetta; conversazioni persistenti da aggiungere |
+| 5 - Task graph | PARTIAL | Job e task iniziali persistenti; scheduler non ancora attivo |
 | 6 - Queue ed eventi | PLANNED |  |
 | 7 - Sandbox provider | PLANNED |  |
 | 8 - Scaffold full-stack | PLANNED |  |
@@ -36,6 +36,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Build di produzione: PASS.
 - Lint: PASS, zero problemi.
 - Metadata social: asset 1200 x 630 verificato.
+- Migrazione D1: 10 tabelle, indici e foreign key generate e ispezionate.
 
 ## Prossimo incremento consigliato
 

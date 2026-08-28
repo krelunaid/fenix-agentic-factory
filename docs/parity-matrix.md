@@ -2,7 +2,7 @@
 
 | Capacità | Stato FENIX | Prova attuale | Gap principale |
 | --- | --- | --- | --- |
-| Idea -> brief | Prototipo | Composer e Product Brief | Schema, versioni, modello |
+| Idea -> brief | Partial | Composer, brief D1 versionato e API protetta | Estrazione AI e approval UI |
 | Workspace conversazionale | Partial | UI a tre pannelli | Persistenza conversazioni |
 | Preview web | Prototipo | Switch desktop/tablet/mobile | Runtime isolato e URL firmato |
 | Test ed evidence | Prototipo | Quality gate UI | Runner e artifact storage |
@@ -13,5 +13,4 @@
 | AI Gateway | Assente | - | Routing, BYOK e ledger |
 | Agent Studio | Assente | - | Tool, memoria e policy |
 | MCP | Assente | - | Client/server OAuth |
-| Cost attribution | Prototipo | Indicatore demo | Ledger per task |
-
+| Cost attribution | Partial | Tabella ledger tenant-aware | Ingestion provider e reconciliation |

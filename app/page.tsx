@@ -12,6 +12,8 @@ type Project = {
   tone: 'violet' | 'cyan' | 'amber';
 };
 
+type CoreState = 'checking' | 'connected' | 'unavailable';
+
 const starterProjects: Project[] = [
   { id: 'orion', name: 'Orion CRM', description: 'CRM leggero per studi creativi', status: 'Building', progress: 64, updated: '12 min fa', tone: 'violet' },
   { id: 'pulse', name: 'Pulse Analytics', description: 'Dashboard operativa per metriche SaaS', status: 'Review', progress: 88, updated: 'Ieri', tone: 'cyan' },
@@ -27,18 +29,30 @@ export default function Home() {
   const [rightTab, setRightTab] = useState<'files' | 'tests' | 'deploy'>('files');
   const [briefOpen, setBriefOpen] = useState(true);
   const [toast, setToast] = useState('');
+  const [coreState, setCoreState] = useState<CoreState>('checking');
+  const [displayName, setDisplayName] = useState('André');
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      const saved = window.localStorage.getItem('fenix-projects');
-      if (!saved) return;
-      try { setProjects(JSON.parse(saved) as Project[]); } catch { /* keep defaults */ }
-    });
-    return () => window.cancelAnimationFrame(frame);
+    const controller = new AbortController();
+    fetch('/api/projects', { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('core_unavailable');
+        return response.json() as Promise<{ projects: Project[]; user: { displayName: string } }>;
+      })
+      .then((data) => {
+        setProjects(data.projects);
+        setDisplayName(data.user.displayName.split(/\s|@/)[0] || 'André');
+        setCoreState('connected');
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setCoreState('unavailable');
+      });
+    return () => controller.abort();
   }, []);
 
   const totalProgress = useMemo(
-    () => Math.round(projects.reduce((sum, project) => sum + project.progress, 0) / projects.length),
+    () => projects.length ? Math.round(projects.reduce((sum, project) => sum + project.progress, 0) / projects.length) : 0,
     [projects],
   );
 
@@ -47,25 +61,30 @@ export default function Home() {
     setView('workspace');
   }
 
-  function createProject() {
+  async function createProject() {
     const idea = prompt.trim();
     if (!idea) {
       setToast('Descrivi prima cosa vuoi creare.');
       window.setTimeout(() => setToast(''), 2200);
       return;
     }
-    const project: Project = {
-      id: `project-${Date.now()}`,
-      name: idea.length > 30 ? `${idea.slice(0, 30)}…` : idea,
-      description: 'Nuovo progetto generato dal composer FENIX',
-      status: 'Planning', progress: 8, updated: 'Adesso', tone: 'violet',
-    };
-    const next = [project, ...projects];
-    setProjects(next);
-    window.localStorage.setItem('fenix-projects', JSON.stringify(next));
-    setActiveProject(project);
-    setPrompt('');
-    setView('workspace');
+    try {
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: idea, description: `Prodotto richiesto: ${idea}` }),
+      });
+      if (!response.ok) throw new Error('project_create_failed');
+      const data = await response.json() as { project: Project };
+      setProjects((current) => [data.project, ...current]);
+      setActiveProject(data.project);
+      setPrompt('');
+      setCoreState('connected');
+      setView('workspace');
+    } catch {
+      setToast('Il nucleo dati non è disponibile. Nessun progetto fittizio è stato creato.');
+      window.setTimeout(() => setToast(''), 3200);
+    }
   }
 
   return (
@@ -78,14 +97,14 @@ export default function Home() {
           <button className="rail-button" aria-label="Versioni">↺</button>
           <button className="rail-button" aria-label="Integrazioni">⌁</button>
         </nav>
-        <div className="rail-bottom"><button className="rail-button" aria-label="Impostazioni">⚙</button><span className="avatar">AD</span></div>
+        <div className="rail-bottom"><button className="rail-button" aria-label="Impostazioni">⚙</button><span className="avatar">{displayName.slice(0, 2).toUpperCase()}</span></div>
       </aside>
 
       {view === 'home' ? (
         <section className="home-view">
           <header className="topbar">
-            <div><span className="eyebrow">FENIX / CONTROL PLANE</span><h1>Buonasera, André.</h1></div>
-            <div className="top-actions"><span className="system-status"><i /> Sistemi nominali</span><button className="secondary-button">Documentazione</button></div>
+            <div><span className="eyebrow">FENIX / CONTROL PLANE</span><h1>Buonasera, {displayName}.</h1></div>
+            <div className="top-actions"><span className={`system-status ${coreState}`}><i /> {coreState === 'connected' ? 'Core connesso' : coreState === 'checking' ? 'Verifica sistemi' : 'Core non disponibile'}</span><button className="secondary-button">Documentazione</button></div>
           </header>
 
           <div className="home-content">
@@ -122,6 +141,7 @@ export default function Home() {
                     <div className="project-body"><span className={`status ${project.status.toLowerCase()}`}>{project.status}</span><h3>{project.name}</h3><p>{project.description}</p><div className="progress-track"><i style={{ width: `${project.progress}%` }} /></div><small>Aggiornato {project.updated}<span>Apri →</span></small></div>
                   </button>
                 ))}
+                {projects.length === 0 && <div className="empty-projects"><strong>Nessun progetto ancora</strong><p>Descrivi il primo prodotto nel composer: verrà salvato nel workspace condiviso.</p></div>}
               </div>
             </section>
           </div>
