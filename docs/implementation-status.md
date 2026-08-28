@@ -24,7 +24,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 17 - Mobile Expo | PARTIAL | Mobile profile, native compatibility/permission policy e build records; EAS/native builder non collegato |
 | 18 - Billing | PARTIAL | Account/subscription/credit ledger, idempotenza, hard cap e reconciliation policy; payment provider non collegato |
 | 19 - Voce | PARTIAL | STT Whisper reale verificato, sessioni it/en, no audio retention, ambiguity/risk confirmation e fallback; TTS provider risponde 3043 e streaming/interruption restano degradati |
-| 20 - Agent Studio | PARTIAL | Profili/versioni e managed inference reali con trace/cost cap; restano tool execution, knowledge retrieval, subagent sandbox ed eval publish |
+| 20 - Agent Studio | PARTIAL | Profili/versioni, managed inference e tool read-only project/repository/quality con trace, approval e cost/step cap; restano subagent sandbox ed eval publish |
 | 21 - MCP | PARTIAL | Connection registry, permission/rate-limit/output policy e revoca; OAuth server e transport non distribuiti |
 | 22 - Team | PARTIAL | Project-scoped RBAC reale, invite, comment threads, inbox persistente e quorum multi-approval con vote audit; resta delivery push/email |
 | 23 - Visual select | PARTIAL | Browser runner HMAC/SSRF-guarded con DOM path, styles, crop PNG persistito, a11y snapshot, responsive viewport ed exact visual diff; resta il perceptual diff |
@@ -47,6 +47,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Conversation runtime: messaggi utente/assistente persistenti, risposta managed AI, trace, budget fail-closed e ledger collegati al composer del workspace.
 - Workspace runtime: iframe sandboxato solo per preview live non scadute, file index, quality run e deployment reali; fallback esplicitamente marcati come mockup.
 - Secret broker: cifratura AES-256-GCM con AAD tenant/progetto/record, riferimenti opachi, revoca coordinata e validatori live GitHub/OpenAI/Stripe senza persistenza in chiaro.
+- Agent Studio: esecuzione deterministica di tool dichiarati e autorizzati (`project.summary`, `repository.search`, `quality.status`), risultati trattati come dati e trace persistito.
 - Voice provider: STT Whisper firmato PASS su audio AIFF reale (`Phoenix is operational.`); TTS MeloTTS configurato ma non dichiarato operativo perché il provider restituisce errore 3043.
 - Visual runner: Browser Rendering firmato PASS su viewport mobile, selector mapping, bounding box, crop PNG hash e accessibility role.
 - Artifact blob: crop PNG fino a 750 KB persistito in D1, referenziato dal registry e servito con scope job, CSP, nosniff ed ETag.
