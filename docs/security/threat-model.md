@@ -29,6 +29,7 @@
 - Sessione shell implicita disabilitata; trasporto RPC e lease breve.
 - Artifact key tenant-scoped, hash SHA-256 obbligatorio ed evidence fail-closed.
 - Patch con path normalization, file freeze, precondition hash e divieto delete di default.
+- Applicazione patch seriale con verifica dell'hash anche nel sandbox, approval per delete, rollback compensativo e audit senza contenuti sorgente.
 - Rollback solo su antenati dello stesso project/job; esecuzione distruttiva separata dal planning.
 
 Il worker sandbox è distribuito e il Control Plane usa URL e segreto gestiti dall'hosting. Un test firmato ha eseguito un comando isolato e distrutto subito la sandbox; il test non dimostra ancora egress deny-by-default, limiti sotto carico o backup/restore.

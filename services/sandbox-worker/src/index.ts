@@ -157,6 +157,12 @@ export default {
         return json({ path, content: result.content });
       }
 
+      if (url.pathname === '/v1/sandboxes/delete') {
+        const path = validateWorkspacePath(String(input.path ?? ''));
+        await sandbox.deleteFile(path);
+        return json({ path, deleted: true });
+      }
+
       if (url.pathname === '/v1/sandboxes/preview') {
         const port = Number(input.port ?? 8080);
         if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('invalid_port');

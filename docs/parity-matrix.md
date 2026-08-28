@@ -7,7 +7,7 @@
 | Preview web | Operativo | Runtime isolato, process readiness, tunnel HTTP verificato e device frames | URL stabile/custom domain opzionale |
 | Scaffold full-stack | Operativo | Template React/Worker/D1 riproducibile; install, typecheck, lint, test e build da zero | Catalogo template aggiuntivi opzionale |
 | Test ed evidence | Partial | Quality/evidence/defect API fail-closed | Runner e blob storage distribuiti |
-| Patch localizzata | Partial | Repo index e policy scope/freeze/precondition testate | Applicazione sandbox e review visuale |
+| Patch localizzata | Partial | Applicatore sandbox con precondition hash, freeze, approval delete, audit e rollback compensativo | Review visuale e diff runner distribuito |
 | GitHub | Partial | Sync records e push/secret/conflict policy | GitHub App/OAuth e worker Git |
 | Deploy | Partial | Release/smoke/approval/rollback gate | Provider staging/production |
 | Mobile | Partial | Profilo e native compatibility gate | Expo/EAS build e C9 |

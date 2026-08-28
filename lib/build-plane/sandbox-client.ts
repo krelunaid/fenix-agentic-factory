@@ -1,7 +1,7 @@
 import type { BuildScope, SandboxCommand, SandboxExecutionResult } from './contracts';
 import { deriveSandboxId } from './sandbox-id';
 
-type SandboxAction = 'exec' | 'write' | 'read' | 'preview' | 'destroy' | 'process/start' | 'process/kill';
+type SandboxAction = 'exec' | 'write' | 'read' | 'delete' | 'preview' | 'destroy' | 'process/start' | 'process/kill';
 
 function toHex(buffer: ArrayBuffer) {
   return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -33,6 +33,18 @@ export function createSandboxClient(baseUrl: string, secret: string) {
     async exec(scope: BuildScope, command: SandboxCommand) {
       const sandboxId = await deriveSandboxId(scope);
       return signedFetch(baseUrl, secret, 'exec', { scope, sandboxId, ...command }) as unknown as Promise<SandboxExecutionResult>;
+    },
+    async writeFile(scope: BuildScope, path: string, content: string) {
+      const sandboxId = await deriveSandboxId(scope);
+      return signedFetch(baseUrl, secret, 'write', { scope, sandboxId, path, content });
+    },
+    async readFile(scope: BuildScope, path: string) {
+      const sandboxId = await deriveSandboxId(scope);
+      return signedFetch(baseUrl, secret, 'read', { scope, sandboxId, path }) as Promise<{ path: string; content: string }>;
+    },
+    async deleteFile(scope: BuildScope, path: string) {
+      const sandboxId = await deriveSandboxId(scope);
+      return signedFetch(baseUrl, secret, 'delete', { scope, sandboxId, path });
     },
     async preview(scope: BuildScope, port = 8080) {
       const sandboxId = await deriveSandboxId(scope);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildRepositoryIndex, normalizeRepositoryPath } from '../lib/build-plane/repo-index';
-import { validatePatch } from '../lib/build-plane/patch-policy';
+import { validatePatch, verifyPatchPreconditions } from '../lib/build-plane/patch-policy';
 import { forkRecoveryPoint, selectRollbackPath, type RecoveryPoint } from '../lib/build-plane/recovery';
 import { evaluateReleaseEvidence } from '../lib/build-plane/quality';
 import { deriveSandboxId } from '../lib/build-plane/sandbox-id';
@@ -45,6 +45,9 @@ test('patch policy enforces scope, preconditions and frozen paths', () => {
   assert.equal(accepted[0].path, 'app/page.tsx');
   assert.throws(() => validatePatch([{ path: 'app/auth/route.ts', operation: 'create', contentSha256: 'after' }], policy), /path_frozen/);
   assert.throws(() => validatePatch([{ path: 'README.md', operation: 'create', contentSha256: 'after' }], policy), /path_not_allowed/);
+  assert.equal(verifyPatchPreconditions(accepted, new Map([['app/page.tsx', 'before']]))[0].expectedSha256, 'before');
+  assert.throws(() => verifyPatchPreconditions(accepted, new Map([['app/page.tsx', 'newer']])), /stale_precondition/);
+  assert.throws(() => verifyPatchPreconditions([{ path: 'app/page.tsx', operation: 'create', contentSha256: 'after' }], new Map([['app/page.tsx', 'before']])), /create_conflict/);
 });
 
 test('recovery only rolls back through ancestors and forks into another job', () => {

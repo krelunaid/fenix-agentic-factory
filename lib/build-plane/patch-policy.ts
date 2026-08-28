@@ -42,3 +42,13 @@ export function validatePatch(operations: PatchOperation[], policy: PatchPolicy)
     return { ...operation, path };
   });
 }
+
+export function verifyPatchPreconditions(operations: PatchOperation[], indexedFiles: Map<string, string>) {
+  for (const operation of operations) {
+    const currentHash = indexedFiles.get(operation.path);
+    if (operation.operation === 'create' && currentHash) throw new Error(`create_conflict:${operation.path}`);
+    if (operation.operation !== 'create' && !currentHash) throw new Error(`file_not_indexed:${operation.path}`);
+    if (operation.operation !== 'create' && currentHash !== operation.expectedSha256) throw new Error(`stale_precondition:${operation.path}`);
+  }
+  return operations;
+}
