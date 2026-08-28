@@ -8,7 +8,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 1 - Brand FENIX | PASS | Nome, metadata e copy originali |
 | 2 - Design system e shell | PARTIAL | Home e workspace responsive implementati; manca suite visuale |
 | 3 - Identity e project core | PARTIAL | Identità ChatGPT, D1, organizzazioni, membership, CRUD progetto e audit |
-| 4 - Conversation e brief | PARTIAL | Brief versionato, API protetta e schema conversazioni/messaggi; streaming AI da collegare |
+| 4 - Conversation e brief | PARTIAL | Brief versionato, cronologia persistente e risposta Workers AI con trace/costi collegate alla UI; resta lo streaming token-by-token |
 | 5 - Task graph | PARTIAL | DAG, dipendenze, claim atomico, tentativi e state machine persistenti |
 | 6 - Queue ed eventi | PARTIAL | Worker contract, completion, replay SSE e budget gate; manca una queue esterna durabile |
 | 7 - Sandbox provider | PASS | Worker Cloudflare Sandbox distribuito, HMAC, scope deterministico, command/path policy, health, signed exec e destroy verificati |
@@ -27,8 +27,8 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 20 - Agent Studio | PARTIAL | Profili/versioni e managed inference reali con trace/cost cap; restano tool execution, knowledge retrieval, subagent sandbox ed eval publish |
 | 21 - MCP | PARTIAL | Connection registry, permission/rate-limit/output policy e revoca; OAuth server e transport non distribuiti |
 | 22 - Team | PARTIAL | Project-scoped RBAC reale, invite, comment threads, inbox persistente e quorum multi-approval con vote audit; resta delivery push/email |
-| 23 - Visual select | PARTIAL | Browser runner reale con DOM path, styles, crop PNG, a11y snapshot, responsive viewport ed exact visual diff; resta blob persistence e perceptual diff |
-| 24 - Hardening | PARTIAL | Operations API, provider health/backup/certification schema, SLO e runbook; C1-C15 x3 e load/restore reali non eseguiti |
+| 23 - Visual select | PARTIAL | Browser runner HMAC/SSRF-guarded con DOM path, styles, crop PNG, a11y snapshot, responsive viewport ed exact visual diff; resta blob persistence e perceptual diff |
+| 24 - Hardening | PARTIAL | Operations API, provider health/backup/certification project-scoped, SLO e runbook; C1-C15 x3 e load/restore reali non eseguiti |
 
 ## Evidence della slice
 
@@ -36,7 +36,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Build di produzione: PASS.
 - Lint: PASS, zero problemi.
 - Metadata social: asset 1200 x 630 verificato.
-- Migrazioni D1: 52 tabelle, indici e foreign key generate e ispezionate.
+- Migrazioni D1: 53 tabelle, indici e foreign key generate e ispezionate.
 - Orchestratore: transizioni condizionali, human gate, task claim e result contract verificati da typecheck/build.
 - Kernel di policy: 15 test su Build Plane, AI routing, integrazioni, source/deploy, mobile, billing, voce, agenti, MCP, RBAC, visual mapping e certification.
 - Sandbox Worker: typecheck e deploy PASS; health 200, richiesta non firmata 401, signed exec isolata 200 con output atteso, destroy 200.
@@ -44,10 +44,11 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Scaffold full-stack: generazione isolata da template, installazione lockfile e gate typecheck/lint/unit/build tutti PASS.
 - Patch runtime: write/read/delete firmati verificati sul sandbox distribuito; contenuto e precondition hash, rollback e audit sono fail-closed nel Control Plane.
 - AI Gateway: health PASS; inferenza text firmata reale PASS (`FENIX_AI_OK`) e image generation FLUX reale PASS (JPEG base64 verificato), con catalogo, token usage e ledger tenant-aware.
+- Conversation runtime: messaggi utente/assistente persistenti, risposta managed AI, trace, budget fail-closed e ledger collegati al composer del workspace.
 - Voice provider: STT Whisper firmato PASS su audio AIFF reale (`Phoenix is operational.`); TTS MeloTTS configurato ma non dichiarato operativo perché il provider restituisce errore 3043.
 - Visual runner: Browser Rendering firmato PASS su viewport mobile, selector mapping, bounding box, crop PNG hash e accessibility role.
-- Schema replay: 52 tabelle applicate in SQLite isolato, `foreign_key_check` con zero errori.
-- Supply-chain audit production: zero vulnerabilità note dopo aggiornamento Next.js 16.3.3.
+- Schema replay: 53 tabelle applicate in SQLite isolato, migrazione legacy certification preservata e `foreign_key_check` con zero errori.
+- Supply-chain audit production: zero vulnerabilità note dopo aggiornamento Next.js 16.3.3 e sostituzione del downloader Puppeteer vulnerabile.
 - Secret pattern scan repository: nessuna credenziale rilevata.
 
 ## Prossimo incremento consigliato

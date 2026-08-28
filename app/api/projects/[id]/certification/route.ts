@@ -9,7 +9,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const { id } = await context.params;
   const access = await requireProjectAccess(id);
   if (!access) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  const rows = await env.DB.prepare("SELECT id,scenario,run_number,status,evidence_json,blocker,created_at FROM certification_runs WHERE json_extract(evidence_json,'$.projectId')=? OR blocker LIKE ? ORDER BY scenario,run_number").bind(id, `project:${id}:%`).all();
+  const rows = await env.DB.prepare('SELECT id,scenario,run_number,status,evidence_json,blocker,created_at FROM certification_runs WHERE project_id=? ORDER BY scenario,run_number').bind(id).all();
   const results: CertificationResult[] = (rows.results as Array<Record<string, unknown>>).map((row) => {
     const data = JSON.parse(String(row.evidence_json || '{}')) as { artifactIds?: string[] };
     return { scenario: String(row.scenario), runNumber: Number(row.run_number), status: row.status as CertificationResult['status'], evidenceIds: data.artifactIds ?? [], blocker: row.blocker ? String(row.blocker) : undefined };
@@ -34,6 +34,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const runId = crypto.randomUUID();
   const now = Date.now();
   const evidence = JSON.stringify({ projectId: id, artifactIds });
-  await env.DB.prepare('INSERT INTO certification_runs (id,scenario,run_number,status,evidence_json,blocker,created_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(scenario,run_number) DO UPDATE SET status=excluded.status,evidence_json=excluded.evidence_json,blocker=excluded.blocker,created_at=excluded.created_at').bind(runId, input.scenario, input.runNumber, input.status, evidence, typeof input.blocker === 'string' ? `project:${id}:${input.blocker.slice(0, 1000)}` : null, now).run();
+  await env.DB.prepare('INSERT INTO certification_runs (id,project_id,scenario,run_number,status,evidence_json,blocker,created_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(project_id,scenario,run_number) DO UPDATE SET status=excluded.status,evidence_json=excluded.evidence_json,blocker=excluded.blocker,created_at=excluded.created_at').bind(runId, id, input.scenario, input.runNumber, input.status, evidence, typeof input.blocker === 'string' ? input.blocker.slice(0, 1000) : null, now).run();
   return NextResponse.json({ id: runId, scenario: input.scenario, runNumber: input.runNumber, status: input.status }, { status: 201 });
 }

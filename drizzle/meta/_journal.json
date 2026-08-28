@@ -43,6 +43,13 @@
       "when": 1787954400000,
       "tag": "0005_project_owner_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787954918634,
+      "tag": "0006_conscious_sprite",
+      "breakpoints": true
     }
   ]
 }

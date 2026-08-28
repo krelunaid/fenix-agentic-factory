@@ -604,10 +604,11 @@ export const backupRuns = sqliteTable('backup_runs', {
 
 export const certificationRuns = sqliteTable('certification_runs', {
   id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
   scenario: text('scenario').notNull(),
   runNumber: integer('run_number').notNull(),
   status: text('status', { enum: ['passed', 'failed', 'blocked', 'not_run'] }).notNull(),
   evidenceJson: text('evidence_json').notNull().default('[]'),
   blocker: text('blocker'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-}, (table) => [uniqueIndex('idx_certification_scenario_run').on(table.scenario, table.runNumber)]);
+}, (table) => [uniqueIndex('idx_certification_project_scenario_run').on(table.projectId, table.scenario, table.runNumber)]);

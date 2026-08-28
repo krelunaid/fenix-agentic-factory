@@ -28,6 +28,7 @@ const starterProjects: Project[] = [
 ];
 
 type CoreStats = { activeJobs: number; evidenceToday: number; spendMonth: number };
+type ChatMessage = { id: string; conversation_id?: string; role: 'user' | 'assistant'; content: string; status: string };
 
 export default function Home() {
   const [view, setView] = useState<'home' | 'workspace'>('home');
@@ -43,6 +44,10 @@ export default function Home() {
   const [workspaceData, setWorkspaceData] = useState<WorkspaceData | null>(null);
   const [workspaceState, setWorkspaceState] = useState<CoreState>('checking');
   const [stats, setStats] = useState<CoreStats>({ activeJobs: 0, evidenceToday: 0, spendMonth: 0 });
+  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatSending, setChatSending] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -81,6 +86,27 @@ export default function Home() {
     return () => controller.abort();
   }, [activeProject.id, view]);
 
+  useEffect(() => {
+    if (view !== 'workspace') return;
+    const controller = new AbortController();
+    fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/conversations`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('conversation_unavailable');
+        return response.json() as Promise<{ conversations: Array<{ id: string }>; messages: ChatMessage[] }>;
+      })
+      .then((data) => {
+        const conversationId = data.conversations[0]?.id ?? null;
+        setChatConversationId(conversationId);
+        setChatMessages(conversationId ? data.messages.filter((message) => message.id && (message.role === 'user' || message.role === 'assistant') && message.status !== 'failed' && message.conversation_id === conversationId) : []);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setChatConversationId(null);
+        setChatMessages([]);
+      });
+    return () => controller.abort();
+  }, [activeProject.id, view]);
+
   const totalProgress = useMemo(
     () => projects.length ? Math.round(projects.reduce((sum, project) => sum + project.progress, 0) / projects.length) : 0,
     [projects],
@@ -114,6 +140,35 @@ export default function Home() {
       setView('workspace');
     } catch {
       setToast('Il nucleo dati non è disponibile. Nessun progetto fittizio è stato creato.');
+      window.setTimeout(() => setToast(''), 3200);
+    }
+  }
+
+  async function sendChatMessage() {
+    const content = chatInput.trim();
+    if (!content || chatSending) return;
+    setChatSending(true);
+    setChatInput('');
+    const optimistic: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content, status: 'complete' };
+    setChatMessages((current) => [...current, optimistic]);
+    try {
+      let conversationId = chatConversationId;
+      if (!conversationId) {
+        const created = await fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/conversations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'create', title: content.slice(0, 80) }) });
+        if (!created.ok) throw new Error('conversation_create_failed');
+        conversationId = String((await created.json() as { id: string }).id);
+        setChatConversationId(conversationId);
+      }
+      const response = await fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/conversations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'send', conversationId, content }) });
+      const data = await response.json() as { assistant?: ChatMessage; assistantExecution?: string };
+      if (!response.ok && data.assistant?.status !== 'failed') throw new Error('message_send_failed');
+      if (data.assistant?.content) setChatMessages((current) => [...current, data.assistant!]);
+      if (data.assistantExecution === 'budget_blocked') setToast('Budget IA esaurito: il messaggio è stato salvato senza risposta automatica.');
+      if (data.assistantExecution === 'failed') setToast('Il provider IA non ha completato la risposta. Il messaggio è salvo e tracciato.');
+    } catch {
+      setToast('Invio non completato. Riprova tra poco.');
+    } finally {
+      setChatSending(false);
       window.setTimeout(() => setToast(''), 3200);
     }
   }
@@ -193,8 +248,11 @@ export default function Home() {
                 <div className="fenix-message"><span className="fenix-dot">F</span><div><strong>Ho preparato il brief iniziale.</strong><p>Prima di costruire, verifichiamo obiettivi, flussi e limiti. Così ogni attività avrà criteri misurabili.</p><button className="brief-button" onClick={() => setBriefOpen(!briefOpen)}>▤ Product Brief <span>{briefOpen ? '−' : '+'}</span></button></div></div>
                 {briefOpen && <div className="brief-card"><label>Obiettivo {workspaceData?.brief?.version ? `· v${workspaceData.brief.version}` : ''}</label><p>{workspaceData?.brief?.objective ?? 'Centralizzare attività, clienti e stato operativo in un unico spazio verificabile.'}</p><div><span>{workspaceData ? `${workspaceData.tasks.length} task` : '3 flussi utente'}</span><span>{workspaceData?.job?.status ?? '6 criteri'}</span><span>{workspaceData ? `€ ${Number(workspaceData.usage?.amount ?? 0).toFixed(2)}` : '2 assunzioni'}</span></div><button>Modifica brief</button></div>}
                 <div className="fenix-message"><span className="fenix-dot">F</span><div><strong>Costruzione avviata</strong><p>Sto lavorando sulla prima tranche. Nessuna azione di produzione verrà eseguita senza conferma.</p></div></div>
+                {chatMessages.map((message) => message.role === 'user'
+                  ? <div className="user-message" key={message.id}>{message.content}</div>
+                  : <div className="fenix-message" key={message.id}><span className="fenix-dot">F</span><div><p>{message.content}</p></div></div>)}
               </div>
-              <div className="chat-composer"><input placeholder="Chiedi una modifica…" aria-label="Messaggio per FENIX"/><button>↑</button></div>
+              <div className="chat-composer"><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendChatMessage(); } }} placeholder="Chiedi una modifica…" aria-label="Messaggio per FENIX" disabled={chatSending}/><button onClick={() => void sendChatMessage()} disabled={chatSending || !chatInput.trim()}>{chatSending ? '…' : '↑'}</button></div>
             </aside>
 
             <section className="preview-panel">

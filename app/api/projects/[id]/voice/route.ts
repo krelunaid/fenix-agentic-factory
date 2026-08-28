@@ -36,7 +36,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       const session = await env.DB.prepare('SELECT id FROM voice_sessions WHERE id=? AND project_id=?').bind(sessionId, id).first();
       if (!session) return NextResponse.json({ error: 'voice_session_not_found' }, { status: 404 });
     } else {
-      await env.DB.prepare("INSERT INTO voice_sessions (id,project_id,conversation_id,language,status,transcript_json,audio_retention_opt_in,created_at) VALUES (?,?,?,?,'processing','[]',?,?)").bind(sessionId, id, typeof input.conversationId === 'string' ? input.conversationId : null, language, input.audioRetentionOptIn === true ? 1 : 0, startedAt).run();
+      await env.DB.prepare("INSERT INTO voice_sessions (id,project_id,conversation_id,language,status,transcript_json,audio_retention_opt_in,created_at) VALUES (?,?,?,?,'active','[]',?,?)").bind(sessionId, id, typeof input.conversationId === 'string' ? input.conversationId : null, language, input.audioRetentionOptIn === true ? 1 : 0, startedAt).run();
     }
     try {
       if (input.action === 'transcribe') {

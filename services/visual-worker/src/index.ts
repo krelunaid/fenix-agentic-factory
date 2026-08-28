@@ -16,9 +16,24 @@ async function authorized(request: Request, body: string, secret: string) {
   const signature = Uint8Array.from(provided.slice(3).match(/.{2}/g) ?? [], (part) => Number.parseInt(part, 16));
   return crypto.subtle.verify('HMAC', key, signature, encoder.encode(canonical));
 }
+function isBlockedAddress(hostname: string) {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return true;
+  if (host.includes(':')) {
+    return host === '::' || host === '::1' || host.startsWith('fc') || host.startsWith('fd') || /^fe[89ab]/.test(host) || host.startsWith('::ffff:');
+  }
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return false;
+  const octets = host.split('.').map(Number);
+  if (octets.some((part) => part < 0 || part > 255)) return true;
+  const [a, b] = octets;
+  return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && (b === 0 || b === 168)) || (a === 198 && (b === 18 || b === 19 || b === 51)) ||
+    (a === 203 && b === 0) || a >= 224;
+}
 function safeTarget(raw: string) {
   const url = new URL(raw);
-  if (url.protocol !== 'https:' || url.username || url.password || ['localhost', '127.0.0.1', '::1'].includes(url.hostname) || url.hostname.endsWith('.local')) throw new Error('unsafe_target');
+  if (url.protocol !== 'https:' || url.username || url.password || isBlockedAddress(url.hostname)) throw new Error('unsafe_target');
   return url.toString();
 }
 

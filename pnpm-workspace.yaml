@@ -1,6 +1,9 @@
 packages:
   - services/*
 
+overrides:
+  '@puppeteer/browsers': 3.2.1
+
 allowBuilds:
   esbuild: true
   sharp: true
