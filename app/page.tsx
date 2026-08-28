@@ -13,6 +13,13 @@ type Project = {
 };
 
 type CoreState = 'checking' | 'connected' | 'unavailable';
+type WorkspaceData = {
+  brief: { objective?: string; version?: number } | null;
+  job: { id: string; status: string; budget_limit: number } | null;
+  tasks: Array<{ id: string; title: string; status: string; phase: number; attempts: number }>;
+  events: Array<{ id: string; human_message: string; created_at: number; severity: string }>;
+  usage: { amount?: number; units?: number } | null;
+};
 
 const starterProjects: Project[] = [
   { id: 'orion', name: 'Orion CRM', description: 'CRM leggero per studi creativi', status: 'Building', progress: 64, updated: '12 min fa', tone: 'violet' },
@@ -31,6 +38,8 @@ export default function Home() {
   const [toast, setToast] = useState('');
   const [coreState, setCoreState] = useState<CoreState>('checking');
   const [displayName, setDisplayName] = useState('André');
+  const [workspaceData, setWorkspaceData] = useState<WorkspaceData | null>(null);
+  const [workspaceState, setWorkspaceState] = useState<CoreState>('checking');
 
   useEffect(() => {
     const controller = new AbortController();
@@ -51,6 +60,23 @@ export default function Home() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    if (view !== 'workspace') return;
+    const controller = new AbortController();
+    fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/workspace`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('workspace_unavailable');
+        return response.json() as Promise<WorkspaceData>;
+      })
+      .then((data) => { setWorkspaceData(data); setWorkspaceState('connected'); })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setWorkspaceData(null);
+        setWorkspaceState('unavailable');
+      });
+    return () => controller.abort();
+  }, [activeProject.id, view]);
+
   const totalProgress = useMemo(
     () => projects.length ? Math.round(projects.reduce((sum, project) => sum + project.progress, 0) / projects.length) : 0,
     [projects],
@@ -58,6 +84,7 @@ export default function Home() {
 
   function openProject(project: Project) {
     setActiveProject(project);
+    setWorkspaceState('checking');
     setView('workspace');
   }
 
@@ -93,7 +120,7 @@ export default function Home() {
         <button className="brand-mark" onClick={() => setView('home')} aria-label="FENIX home">F</button>
         <nav className="rail-nav">
           <button className={view === 'home' ? 'rail-button active' : 'rail-button'} onClick={() => setView('home')} aria-label="Home">⌂</button>
-          <button className={view === 'workspace' ? 'rail-button active' : 'rail-button'} onClick={() => setView('workspace')} aria-label="Workspace">◇</button>
+          <button className={view === 'workspace' ? 'rail-button active' : 'rail-button'} onClick={() => { setWorkspaceState('checking'); setView('workspace'); }} aria-label="Workspace">◇</button>
           <button className="rail-button" aria-label="Versioni">↺</button>
           <button className="rail-button" aria-label="Integrazioni">⌁</button>
         </nav>
@@ -160,24 +187,24 @@ export default function Home() {
               <div className="chat-scroll">
                 <div className="user-message">Crea {activeProject.description.toLowerCase()}, con una vista semplice per il team.</div>
                 <div className="fenix-message"><span className="fenix-dot">F</span><div><strong>Ho preparato il brief iniziale.</strong><p>Prima di costruire, verifichiamo obiettivi, flussi e limiti. Così ogni attività avrà criteri misurabili.</p><button className="brief-button" onClick={() => setBriefOpen(!briefOpen)}>▤ Product Brief <span>{briefOpen ? '−' : '+'}</span></button></div></div>
-                {briefOpen && <div className="brief-card"><label>Obiettivo</label><p>Centralizzare attività, clienti e stato operativo in un unico spazio verificabile.</p><div><span>3 flussi utente</span><span>6 criteri</span><span>2 assunzioni</span></div><button>Modifica brief</button></div>}
+                {briefOpen && <div className="brief-card"><label>Obiettivo {workspaceData?.brief?.version ? `· v${workspaceData.brief.version}` : ''}</label><p>{workspaceData?.brief?.objective ?? 'Centralizzare attività, clienti e stato operativo in un unico spazio verificabile.'}</p><div><span>{workspaceData ? `${workspaceData.tasks.length} task` : '3 flussi utente'}</span><span>{workspaceData?.job?.status ?? '6 criteri'}</span><span>{workspaceData ? `€ ${Number(workspaceData.usage?.amount ?? 0).toFixed(2)}` : '2 assunzioni'}</span></div><button>Modifica brief</button></div>}
                 <div className="fenix-message"><span className="fenix-dot">F</span><div><strong>Costruzione avviata</strong><p>Sto lavorando sulla prima tranche. Nessuna azione di produzione verrà eseguita senza conferma.</p></div></div>
               </div>
               <div className="chat-composer"><input placeholder="Chiedi una modifica…" aria-label="Messaggio per FENIX"/><button>↑</button></div>
             </aside>
 
             <section className="preview-panel">
-              <div className="preview-toolbar"><div><span className="live-dot"/>Preview viva</div><div className="device-switcher"><button className={device === 'desktop' ? 'active' : ''} onClick={() => setDevice('desktop')}>▰</button><button className={device === 'tablet' ? 'active' : ''} onClick={() => setDevice('tablet')}>▯</button><button className={device === 'mobile' ? 'active' : ''} onClick={() => setDevice('mobile')}>▥</button></div><button>↗</button></div>
+              <div className="preview-toolbar"><div><span className={`live-dot ${workspaceState}`}/>{workspaceState === 'connected' ? 'Control Plane connesso' : workspaceState === 'checking' ? 'Connessione workspace' : 'Preview dimostrativa'}</div><div className="device-switcher"><button className={device === 'desktop' ? 'active' : ''} onClick={() => setDevice('desktop')}>▰</button><button className={device === 'tablet' ? 'active' : ''} onClick={() => setDevice('tablet')}>▯</button><button className={device === 'mobile' ? 'active' : ''} onClick={() => setDevice('mobile')}>▥</button></div><button>↗</button></div>
               <div className="preview-canvas">
                 <div className={`device-frame ${device}`}><div className="mock-app"><aside><b>O</b><i/><i/><i/><i/></aside><div className="mock-main"><header><div><small>OVERVIEW</small><h3>Buongiorno, team.</h3></div><span>＋ Nuovo cliente</span></header><div className="mock-stats"><article><small>RICAVI</small><strong>€ 48.240</strong><em>+12,4%</em></article><article><small>PROGETTI</small><strong>24</strong><em>6 attivi</em></article><article><small>CLIENTI</small><strong>128</strong><em>+8 questo mese</em></article></div><div className="mock-chart"><div><small>ANDAMENTO</small><strong>Ricavi mensili</strong></div><div className="bars">{[36,54,43,68,61,82,76,92].map((height, index)=><i key={index} style={{height:`${height}%`}}/>)}</div></div><div className="mock-table"><span>Attività recenti</span>{['Studio Delta','Forma Labs','Nord&Co'].map((name,index)=><div key={name}><b>{name}</b><i/><em>{['€ 4.200','€ 2.850','€ 6.100'][index]}</em></div>)}</div></div></div></div>
               </div>
-              <div className="log-drawer"><span>EVENTI BUILD</span><code><i>21:44:08</i> Preview aggiornata · commit 7e2c91</code><code><i>21:43:51</i> ✓ Typecheck completato</code></div>
+              <div className="log-drawer"><span>{workspaceData ? 'EVENTI CONTROL PLANE' : 'EVENTI DIMOSTRATIVI'}</span>{workspaceData?.events.slice(-2).map((event) => <code key={event.id}><i>{new Date(event.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</i> {event.human_message}</code>)}{!workspaceData && <><code><i>21:44</i> Preview dimostrativa aggiornata</code><code><i>21:43</i> Nessun runner collegato</code></>}</div>
             </section>
 
             <aside className="inspector-panel">
               <div className="panel-tabs inspector-tabs">{(['files','tests','deploy'] as const).map(tab => <button key={tab} className={rightTab===tab?'active':''} onClick={()=>setRightTab(tab)}>{tab==='files'?'File':tab==='tests'?'Test':'Deploy'}</button>)}</div>
               {rightTab === 'files' && <div className="file-tree"><div className="inspector-heading"><span>FILE MODIFICATI</span><b>3</b></div><button>⌄ app</button><button className="nested">◇ dashboard</button><button className="nested active"># page.tsx <em>M</em></button><button>⌄ components</button><button className="nested">◇ metrics.tsx <em>M</em></button><button>⌄ lib</button><button className="nested">TS schema.ts</button><div className="diff-card"><span>ULTIMA PATCH</span><strong>Dashboard overview</strong><p>3 file · +184 −12</p><button>Vedi differenze</button></div></div>}
-              {rightTab === 'tests' && <div className="test-list"><div className="quality-score"><span>QUALITY GATE</span><strong>8/9</strong><p>Un controllo in attesa</p></div>{['Typecheck','Build','Unit test','API smoke','A11y base'].map((test,index)=><div key={test}><span className={index===4?'pending':'pass'}>{index===4?'◷':'✓'}</span><p><strong>{test}</strong><small>{index===4?'In attesa':'PASS · evidence salvata'}</small></p></div>)}</div>}
+              {rightTab === 'tests' && <div className="test-list"><div className="quality-score"><span>{workspaceData ? 'TASK GRAPH' : 'QUALITY GATE DEMO'}</span><strong>{workspaceData ? `${workspaceData.tasks.filter((task) => task.status === 'completed').length}/${workspaceData.tasks.length}` : '8/9'}</strong><p>{workspaceData?.job ? `Job ${workspaceData.job.status}` : 'Nessun runner collegato'}</p></div>{(workspaceData?.tasks ?? ['Typecheck','Build','Unit test','API smoke','A11y base']).map((item,index) => { const task = typeof item === 'string' ? null : item; const label = typeof item === 'string' ? item : item.title; const passed = task ? task.status === 'completed' : index < 4; return <div key={task?.id ?? label}><span className={passed?'pass':'pending'}>{passed?'✓':'◷'}</span><p><strong>{label}</strong><small>{task ? `${task.status.toUpperCase()} · fase ${task.phase}` : passed ? 'DEMO' : 'In attesa'}</small></p></div>; })}</div>}
               {rightTab === 'deploy' && <div className="deploy-panel"><span className="section-label">AMBIENTI</span><div><i className="stage-dot"/><p><strong>Staging</strong><small>Pronto per una preview verificata</small></p><button>Prepara</button></div><div className="locked"><i>◇</i><p><strong>Produzione</strong><small>Richiede approvazione esplicita</small></p></div><p className="honesty-note">Nessun provider è collegato in questa demo. Il pulsante non pubblica dati reali.</p></div>}
             </aside>
           </div>

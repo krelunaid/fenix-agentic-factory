@@ -1,0 +1,34 @@
+import { env } from 'cloudflare:workers';
+import { getChatGPTUser } from '../app/chatgpt-auth';
+import { ensureCoreSchema } from '../db';
+
+export async function requireProjectAccess(projectId: string) {
+  const user = await getChatGPTUser();
+  if (!user) return null;
+  await ensureCoreSchema();
+  const membership = await env.DB.prepare('SELECT p.organization_id, m.role FROM projects p JOIN organization_members m ON m.organization_id=p.organization_id WHERE p.id=? AND m.user_id=? LIMIT 1').bind(projectId, user.userId).first<{ organization_id: string; role: string }>();
+  if (!membership) return null;
+  return { user, organizationId: membership.organization_id, role: membership.role };
+}
+
+export async function requireJobAccess(jobId: string) {
+  const user = await getChatGPTUser();
+  if (!user) return null;
+  await ensureCoreSchema();
+  const membership = await env.DB.prepare('SELECT j.id, j.project_id, j.status, j.budget_limit, p.organization_id, m.role FROM jobs j JOIN projects p ON p.id=j.project_id JOIN organization_members m ON m.organization_id=p.organization_id WHERE j.id=? AND m.user_id=? LIMIT 1').bind(jobId, user.userId).first<{ id: string; project_id: string; status: string; budget_limit: number; organization_id: string; role: string }>();
+  if (!membership) return null;
+  return { user, job: membership };
+}
+
+export async function requireTaskAccess(taskId: string) {
+  const user = await getChatGPTUser();
+  if (!user) return null;
+  await ensureCoreSchema();
+  const task = await env.DB.prepare('SELECT t.id,t.job_id,t.project_id,t.status,p.organization_id,m.role FROM tasks t JOIN projects p ON p.id=t.project_id JOIN organization_members m ON m.organization_id=p.organization_id WHERE t.id=? AND m.user_id=? LIMIT 1').bind(taskId, user.userId).first<{ id: string; job_id: string; project_id: string; status: string; organization_id: string; role: string }>();
+  if (!task) return null;
+  return { user, task };
+}
+
+export function canOperate(role: string) {
+  return role === 'owner' || role === 'admin' || role === 'builder';
+}

@@ -71,6 +71,35 @@ export const tasks = sqliteTable('tasks', {
   completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
 }, (table) => [uniqueIndex('idx_tasks_idempotency').on(table.idempotencyKey), index('idx_tasks_job_status').on(table.jobId, table.status)]);
 
+export const taskDependencies = sqliteTable('task_dependencies', {
+  taskId: text('task_id').notNull().references(() => tasks.id),
+  dependsOnTaskId: text('depends_on_task_id').notNull().references(() => tasks.id),
+}, (table) => [uniqueIndex('idx_task_dependencies_pair').on(table.taskId, table.dependsOnTaskId), index('idx_task_dependencies_parent').on(table.dependsOnTaskId)]);
+
+export const taskAttempts = sqliteTable('task_attempts', {
+  id: text('id').primaryKey(),
+  taskId: text('task_id').notNull().references(() => tasks.id),
+  attemptNumber: integer('attempt_number').notNull(),
+  status: text('status').notNull(),
+  workerId: text('worker_id'),
+  errorCode: text('error_code'),
+  startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
+  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+}, (table) => [uniqueIndex('idx_task_attempts_number').on(table.taskId, table.attemptNumber)]);
+
+export const approvals = sqliteTable('approvals', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  jobId: text('job_id').references(() => jobs.id),
+  kind: text('kind').notNull(),
+  status: text('status').notNull(),
+  requestedBy: text('requested_by').notNull().references(() => users.id),
+  decidedBy: text('decided_by').references(() => users.id),
+  reason: text('reason').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  decidedAt: integer('decided_at', { mode: 'timestamp_ms' }),
+}, (table) => [index('idx_approvals_job_status').on(table.jobId, table.status)]);
+
 export const buildEvents = sqliteTable('build_events', {
   id: text('id').primaryKey(),
   traceId: text('trace_id').notNull(),
@@ -105,4 +134,3 @@ export const usageLedger = sqliteTable('usage_ledger', {
   amount: real('amount').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 }, (table) => [index('idx_usage_org_created').on(table.organizationId, table.createdAt)]);
-

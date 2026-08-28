@@ -68,11 +68,13 @@ export async function POST(request: Request) {
     ['Scaffold full-stack', 8, 'blocked'],
     ['Quality gate', 11, 'blocked'],
   ] as const;
+  const taskIds = taskDefinitions.map(() => crypto.randomUUID());
   const statements = [
     env.DB.prepare('INSERT INTO projects (id,organization_id,name,description,status,progress,tone,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(projectId, core.orgId, name, description || 'Nuovo progetto FENIX', 'Planning', 8, 'violet', core.user.userId, now, now),
     env.DB.prepare('INSERT INTO specifications (id,project_id,version,objective,assumptions_json,flows_json,scenarios_json,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?)').bind(specificationId, projectId, 1, description || name, '[]', '[]', '[]', core.user.userId, now),
     env.DB.prepare('INSERT INTO jobs (id,project_id,status,budget_limit,created_at,updated_at) VALUES (?,?,?,?,?,?)').bind(jobId, projectId, 'DRAFT', 25, now, now),
-    ...taskDefinitions.map(([title, phase, status], index) => env.DB.prepare('INSERT INTO tasks (id,job_id,project_id,phase,title,status,priority,risk_level,idempotency_key,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), jobId, projectId, phase, title, status, index, phase >= 8 ? 'medium' : 'low', `${projectId}:${phase}:${index}`, now)),
+    ...taskDefinitions.map(([title, phase, status], index) => env.DB.prepare('INSERT INTO tasks (id,job_id,project_id,phase,title,status,priority,risk_level,idempotency_key,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(taskIds[index], jobId, projectId, phase, title, status, index, phase >= 8 ? 'medium' : 'low', `${projectId}:${phase}:${index}`, now)),
+    ...taskIds.slice(1).map((taskId, index) => env.DB.prepare('INSERT INTO task_dependencies (task_id,depends_on_task_id) VALUES (?,?)').bind(taskId, taskIds[index])),
     env.DB.prepare('INSERT INTO build_events (id,trace_id,project_id,job_id,type,severity,human_message,cost_delta,created_at) VALUES (?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), crypto.randomUUID(), projectId, jobId, 'project.created', 'info', 'Progetto e task graph iniziale creati', 0, now),
     env.DB.prepare('INSERT INTO audit_events (id,organization_id,actor_user_id,action,resource_type,resource_id,payload_json,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), core.orgId, core.user.userId, 'project.create', 'project', projectId, JSON.stringify({ name }), now),
   ];
@@ -80,4 +82,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ project: projectJson({ id: projectId, name, description: description || 'Nuovo progetto FENIX', status: 'Planning', progress: 8, tone: 'violet', updated_at: now }) }, { status: 201 });
 }
-

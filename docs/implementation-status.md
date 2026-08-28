@@ -9,8 +9,8 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 2 - Design system e shell | PARTIAL | Home e workspace responsive implementati; manca suite visuale |
 | 3 - Identity e project core | PARTIAL | Identità ChatGPT, D1, organizzazioni, membership, CRUD progetto e audit |
 | 4 - Conversation e brief | PARTIAL | Brief versionato e API protetta; conversazioni persistenti da aggiungere |
-| 5 - Task graph | PARTIAL | Job e task iniziali persistenti; scheduler non ancora attivo |
-| 6 - Queue ed eventi | PLANNED |  |
+| 5 - Task graph | PARTIAL | DAG, dipendenze, claim atomico, tentativi e state machine persistenti |
+| 6 - Queue ed eventi | PARTIAL | Worker contract, completion, replay SSE e budget gate; manca una queue esterna durabile |
 | 7 - Sandbox provider | PLANNED |  |
 | 8 - Scaffold full-stack | PLANNED |  |
 | 9 - Preview Engine | PARTIAL | Device frame interattivo; runtime generato non collegato |
@@ -36,7 +36,8 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Build di produzione: PASS.
 - Lint: PASS, zero problemi.
 - Metadata social: asset 1200 x 630 verificato.
-- Migrazione D1: 10 tabelle, indici e foreign key generate e ispezionate.
+- Migrazioni D1: 13 tabelle, indici e foreign key generate e ispezionate.
+- Orchestratore: transizioni condizionali, human gate, task claim e result contract verificati da typecheck/build.
 
 ## Prossimo incremento consigliato
 
