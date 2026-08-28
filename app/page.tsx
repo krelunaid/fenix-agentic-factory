@@ -1,0 +1,166 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+
+type Project = {
+  id: string;
+  name: string;
+  description: string;
+  status: 'Planning' | 'Building' | 'Review' | 'Ready';
+  progress: number;
+  updated: string;
+  tone: 'violet' | 'cyan' | 'amber';
+};
+
+const starterProjects: Project[] = [
+  { id: 'orion', name: 'Orion CRM', description: 'CRM leggero per studi creativi', status: 'Building', progress: 64, updated: '12 min fa', tone: 'violet' },
+  { id: 'pulse', name: 'Pulse Analytics', description: 'Dashboard operativa per metriche SaaS', status: 'Review', progress: 88, updated: 'Ieri', tone: 'cyan' },
+  { id: 'atlas', name: 'Atlas Mobile', description: 'Companion app per team sul campo', status: 'Planning', progress: 24, updated: '3 giorni fa', tone: 'amber' },
+];
+
+export default function Home() {
+  const [view, setView] = useState<'home' | 'workspace'>('home');
+  const [projects, setProjects] = useState<Project[]>(() => {
+    if (typeof window === 'undefined') return starterProjects;
+    const saved = window.localStorage.getItem('fenix-projects');
+    if (!saved) return starterProjects;
+    try { return JSON.parse(saved) as Project[]; } catch { return starterProjects; }
+  });
+  const [prompt, setPrompt] = useState('');
+  const [activeProject, setActiveProject] = useState<Project>(starterProjects[0]);
+  const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [rightTab, setRightTab] = useState<'files' | 'tests' | 'deploy'>('files');
+  const [briefOpen, setBriefOpen] = useState(true);
+  const [toast, setToast] = useState('');
+
+  const totalProgress = useMemo(
+    () => Math.round(projects.reduce((sum, project) => sum + project.progress, 0) / projects.length),
+    [projects],
+  );
+
+  function openProject(project: Project) {
+    setActiveProject(project);
+    setView('workspace');
+  }
+
+  function createProject() {
+    const idea = prompt.trim();
+    if (!idea) {
+      setToast('Descrivi prima cosa vuoi creare.');
+      window.setTimeout(() => setToast(''), 2200);
+      return;
+    }
+    const project: Project = {
+      id: `project-${Date.now()}`,
+      name: idea.length > 30 ? `${idea.slice(0, 30)}…` : idea,
+      description: 'Nuovo progetto generato dal composer FENIX',
+      status: 'Planning', progress: 8, updated: 'Adesso', tone: 'violet',
+    };
+    const next = [project, ...projects];
+    setProjects(next);
+    window.localStorage.setItem('fenix-projects', JSON.stringify(next));
+    setActiveProject(project);
+    setPrompt('');
+    setView('workspace');
+  }
+
+  return (
+    <main className="app-shell">
+      <aside className="rail" aria-label="Navigazione principale">
+        <button className="brand-mark" onClick={() => setView('home')} aria-label="FENIX home">F</button>
+        <nav className="rail-nav">
+          <button className={view === 'home' ? 'rail-button active' : 'rail-button'} onClick={() => setView('home')} aria-label="Home">⌂</button>
+          <button className={view === 'workspace' ? 'rail-button active' : 'rail-button'} onClick={() => setView('workspace')} aria-label="Workspace">◇</button>
+          <button className="rail-button" aria-label="Versioni">↺</button>
+          <button className="rail-button" aria-label="Integrazioni">⌁</button>
+        </nav>
+        <div className="rail-bottom"><button className="rail-button" aria-label="Impostazioni">⚙</button><span className="avatar">AD</span></div>
+      </aside>
+
+      {view === 'home' ? (
+        <section className="home-view">
+          <header className="topbar">
+            <div><span className="eyebrow">FENIX / CONTROL PLANE</span><h1>Buonasera, André.</h1></div>
+            <div className="top-actions"><span className="system-status"><i /> Sistemi nominali</span><button className="secondary-button">Documentazione</button></div>
+          </header>
+
+          <div className="home-content">
+            <section className="hero-grid">
+              <div className="composer-card">
+                <span className="section-label">NUOVO PROGETTO</span>
+                <h2>Che cosa vuoi portare alla luce?</h2>
+                <p>Descrivi il prodotto. FENIX trasformerà l’idea in brief, piano verificabile e software funzionante.</p>
+                <div className="composer">
+                  <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Es. Crea un portale clienti con login, fatture e richieste di assistenza…" aria-label="Descrivi il progetto" />
+                  <div className="composer-footer">
+                    <div className="composer-tools"><button aria-label="Allega file">＋</button><button aria-label="Usa la voce">⌁</button><span>Auto · Bilanciato</span></div>
+                    <button className="create-button" onClick={createProject}>Crea progetto <span>→</span></button>
+                  </div>
+                </div>
+                <div className="quick-types">
+                  {['Web app', 'SaaS', 'Dashboard', 'Mobile', 'Agente IA'].map((item) => <button key={item} onClick={() => setPrompt(`Crea ${item.toLowerCase()} per `)}>{item}</button>)}
+                </div>
+              </div>
+
+              <aside className="pulse-card">
+                <div className="pulse-orbit"><span>F</span><i /></div>
+                <div><span className="section-label">IMPULSO OPERATIVO</span><strong>{totalProgress}%</strong><p>Avanzamento medio dei progetti attivi</p></div>
+                <dl><div><dt>Build attive</dt><dd>01</dd></div><div><dt>Evidence oggi</dt><dd>18</dd></div><div><dt>Budget mensile</dt><dd>€ 42,80</dd></div></dl>
+              </aside>
+            </section>
+
+            <section className="projects-section">
+              <div className="section-heading"><div><span className="section-label">WORKSPACE</span><h2>Progetti recenti</h2></div><button className="text-button">Vedi tutti <span>→</span></button></div>
+              <div className="project-grid">
+                {projects.slice(0, 3).map((project) => (
+                  <button className="project-card" key={project.id} onClick={() => openProject(project)}>
+                    <div className={`project-visual ${project.tone}`}><span className="mini-window"><i /><i /><i /></span><b>{project.name.slice(0, 1)}</b><em>{project.progress}%</em></div>
+                    <div className="project-body"><span className={`status ${project.status.toLowerCase()}`}>{project.status}</span><h3>{project.name}</h3><p>{project.description}</p><div className="progress-track"><i style={{ width: `${project.progress}%` }} /></div><small>Aggiornato {project.updated}<span>Apri →</span></small></div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          </div>
+        </section>
+      ) : (
+        <section className="workspace-view">
+          <header className="workspace-topbar">
+            <div className="project-identity"><button onClick={() => setView('home')}>←</button><div><span>PROGETTO</span><strong>{activeProject.name}</strong></div><span className={`status ${activeProject.status.toLowerCase()}`}>{activeProject.status}</span></div>
+            <div className="branch-pill">⑂ main</div>
+            <div className="workspace-actions"><span className="cost-pill">Sessione € 1,42</span><button>Condividi</button><button className="publish-button">Pubblica</button></div>
+          </header>
+
+          <div className="workspace-grid">
+            <aside className="conversation-panel">
+              <div className="panel-tabs"><button className="active">Conversazione</button><button>Decisioni</button></div>
+              <div className="chat-scroll">
+                <div className="user-message">Crea {activeProject.description.toLowerCase()}, con una vista semplice per il team.</div>
+                <div className="fenix-message"><span className="fenix-dot">F</span><div><strong>Ho preparato il brief iniziale.</strong><p>Prima di costruire, verifichiamo obiettivi, flussi e limiti. Così ogni attività avrà criteri misurabili.</p><button className="brief-button" onClick={() => setBriefOpen(!briefOpen)}>▤ Product Brief <span>{briefOpen ? '−' : '+'}</span></button></div></div>
+                {briefOpen && <div className="brief-card"><label>Obiettivo</label><p>Centralizzare attività, clienti e stato operativo in un unico spazio verificabile.</p><div><span>3 flussi utente</span><span>6 criteri</span><span>2 assunzioni</span></div><button>Modifica brief</button></div>}
+                <div className="fenix-message"><span className="fenix-dot">F</span><div><strong>Costruzione avviata</strong><p>Sto lavorando sulla prima tranche. Nessuna azione di produzione verrà eseguita senza conferma.</p></div></div>
+              </div>
+              <div className="chat-composer"><input placeholder="Chiedi una modifica…" aria-label="Messaggio per FENIX"/><button>↑</button></div>
+            </aside>
+
+            <section className="preview-panel">
+              <div className="preview-toolbar"><div><span className="live-dot"/>Preview viva</div><div className="device-switcher"><button className={device === 'desktop' ? 'active' : ''} onClick={() => setDevice('desktop')}>▰</button><button className={device === 'tablet' ? 'active' : ''} onClick={() => setDevice('tablet')}>▯</button><button className={device === 'mobile' ? 'active' : ''} onClick={() => setDevice('mobile')}>▥</button></div><button>↗</button></div>
+              <div className="preview-canvas">
+                <div className={`device-frame ${device}`}><div className="mock-app"><aside><b>O</b><i/><i/><i/><i/></aside><div className="mock-main"><header><div><small>OVERVIEW</small><h3>Buongiorno, team.</h3></div><span>＋ Nuovo cliente</span></header><div className="mock-stats"><article><small>RICAVI</small><strong>€ 48.240</strong><em>+12,4%</em></article><article><small>PROGETTI</small><strong>24</strong><em>6 attivi</em></article><article><small>CLIENTI</small><strong>128</strong><em>+8 questo mese</em></article></div><div className="mock-chart"><div><small>ANDAMENTO</small><strong>Ricavi mensili</strong></div><div className="bars">{[36,54,43,68,61,82,76,92].map((height, index)=><i key={index} style={{height:`${height}%`}}/>)}</div></div><div className="mock-table"><span>Attività recenti</span>{['Studio Delta','Forma Labs','Nord&Co'].map((name,index)=><div key={name}><b>{name}</b><i/><em>{['€ 4.200','€ 2.850','€ 6.100'][index]}</em></div>)}</div></div></div></div>
+              </div>
+              <div className="log-drawer"><span>EVENTI BUILD</span><code><i>21:44:08</i> Preview aggiornata · commit 7e2c91</code><code><i>21:43:51</i> ✓ Typecheck completato</code></div>
+            </section>
+
+            <aside className="inspector-panel">
+              <div className="panel-tabs inspector-tabs">{(['files','tests','deploy'] as const).map(tab => <button key={tab} className={rightTab===tab?'active':''} onClick={()=>setRightTab(tab)}>{tab==='files'?'File':tab==='tests'?'Test':'Deploy'}</button>)}</div>
+              {rightTab === 'files' && <div className="file-tree"><div className="inspector-heading"><span>FILE MODIFICATI</span><b>3</b></div><button>⌄ app</button><button className="nested">◇ dashboard</button><button className="nested active"># page.tsx <em>M</em></button><button>⌄ components</button><button className="nested">◇ metrics.tsx <em>M</em></button><button>⌄ lib</button><button className="nested">TS schema.ts</button><div className="diff-card"><span>ULTIMA PATCH</span><strong>Dashboard overview</strong><p>3 file · +184 −12</p><button>Vedi differenze</button></div></div>}
+              {rightTab === 'tests' && <div className="test-list"><div className="quality-score"><span>QUALITY GATE</span><strong>8/9</strong><p>Un controllo in attesa</p></div>{['Typecheck','Build','Unit test','API smoke','A11y base'].map((test,index)=><div key={test}><span className={index===4?'pending':'pass'}>{index===4?'◷':'✓'}</span><p><strong>{test}</strong><small>{index===4?'In attesa':'PASS · evidence salvata'}</small></p></div>)}</div>}
+              {rightTab === 'deploy' && <div className="deploy-panel"><span className="section-label">AMBIENTI</span><div><i className="stage-dot"/><p><strong>Staging</strong><small>Pronto per una preview verificata</small></p><button>Prepara</button></div><div className="locked"><i>◇</i><p><strong>Produzione</strong><small>Richiede approvazione esplicita</small></p></div><p className="honesty-note">Nessun provider è collegato in questa demo. Il pulsante non pubblica dati reali.</p></div>}
+            </aside>
+          </div>
+        </section>
+      )}
+
+      {toast && <div className="toast" role="status">{toast}</div>}
+    </main>
+  );
+}
