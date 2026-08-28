@@ -17,13 +17,13 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 10 - Repo index e patch | PARTIAL | Applicatore sandbox atomico con hash precondition, path/freeze policy, delete approval, audit e rollback compensativo; manca il runner visuale end-to-end |
 | 11 - QA ed evidence | PARTIAL | Registry artifact, quality run, evidence fail-closed e defect lifecycle; runner browser/a11y esterno da collegare |
 | 12 - Recovery e fork | PARTIAL | Recovery graph, snapshot artifact contract e rollback planning; restore fisico provider da collegare |
-| 13 - AI Gateway e costi | PARTIAL | Workers AI text/vision distribuito e firmato, routing, budget, call/usage ledger e costo reale; restano image generation e BYOK esterni |
+| 13 - AI Gateway e costi | PARTIAL | Workers AI text/vision/image distribuito e firmato, routing, budget e call/usage ledger; restano BYOK e riconciliazione image-neurons |
 | 14 - GitHub | PARTIAL | Source connection, sync/conflict records, no-force/secret policy e PR evidence summary; GitHub App/OAuth non configurata |
 | 15 - Deploy e domini | PARTIAL | Release artifact, quality/smoke/approval gate, rollback target, deployment/domain records; provider esterno non collegato |
 | 16 - Integrazioni | PARTIAL | Manifest connection, secret reference, revoke, redaction, idempotency e approval policy; adapter esterni non configurati |
 | 17 - Mobile Expo | PARTIAL | Mobile profile, native compatibility/permission policy e build records; EAS/native builder non collegato |
 | 18 - Billing | PARTIAL | Account/subscription/credit ledger, idempotenza, hard cap e reconciliation policy; payment provider non collegato |
-| 19 - Voce | PARTIAL | Sessioni, it/en, retention opt-in, ambiguity/risk confirmation e text fallback; STT/TTS streaming non collegato |
+| 19 - Voce | PARTIAL | STT Whisper reale verificato, sessioni it/en, no audio retention, ambiguity/risk confirmation e fallback; TTS provider risponde 3043 e streaming/interruption restano degradati |
 | 20 - Agent Studio | PARTIAL | Profili/versioni e managed inference reali con trace/cost cap; restano tool execution, knowledge retrieval, subagent sandbox ed eval publish |
 | 21 - MCP | PARTIAL | Connection registry, permission/rate-limit/output policy e revoca; OAuth server e transport non distribuiti |
 | 22 - Team | PARTIAL | Project members, ruoli, commenti/resolve e notifiche schema; delivery notifiche e multi-approval avanzato da collegare |
@@ -43,7 +43,8 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Preview Engine: process start 201/running, port readiness, tunnel 200 con body atteso, process kill e sandbox destroy verificati.
 - Scaffold full-stack: generazione isolata da template, installazione lockfile e gate typecheck/lint/unit/build tutti PASS.
 - Patch runtime: write/read/delete firmati verificati sul sandbox distribuito; contenuto e precondition hash, rollback e audit sono fail-closed nel Control Plane.
-- AI Gateway: Workers AI health PASS e inferenza firmata reale PASS (`FENIX_AI_OK`), con catalogo/costi correnti, token usage e ledger tenant-aware.
+- AI Gateway: health PASS; inferenza text firmata reale PASS (`FENIX_AI_OK`) e image generation FLUX reale PASS (JPEG base64 verificato), con catalogo, token usage e ledger tenant-aware.
+- Voice provider: STT Whisper firmato PASS su audio AIFF reale (`Phoenix is operational.`); TTS MeloTTS configurato ma non dichiarato operativo perché il provider restituisce errore 3043.
 - Schema replay: 52 tabelle applicate in SQLite isolato, `foreign_key_check` con zero errori.
 - Supply-chain audit production: zero vulnerabilità note dopo aggiornamento Next.js 16.3.3.
 - Secret pattern scan repository: nessuna credenziale rilevata.

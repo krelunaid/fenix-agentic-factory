@@ -14,6 +14,7 @@ async function ensureManagedCatalog() {
   await env.DB.batch([
     env.DB.prepare("INSERT INTO model_catalog (id,provider,model,capabilities_json,input_cost_per_million,output_cost_per_million,enabled,updated_at) VALUES ('cf-llama-3-2-3b','cloudflare-workers-ai','@cf/meta/llama-3.2-3b-instruct','[\"text\"]',0.0509,0.335,1,?) ON CONFLICT(id) DO UPDATE SET enabled=1,updated_at=excluded.updated_at").bind(now),
     env.DB.prepare("INSERT INTO model_catalog (id,provider,model,capabilities_json,input_cost_per_million,output_cost_per_million,enabled,updated_at) VALUES ('cf-llama-3-2-vision','cloudflare-workers-ai','@cf/meta/llama-3.2-11b-vision-instruct','[\"text\",\"vision\"]',0.0485,0.676,1,?) ON CONFLICT(id) DO UPDATE SET enabled=1,updated_at=excluded.updated_at").bind(now),
+    env.DB.prepare("INSERT INTO model_catalog (id,provider,model,capabilities_json,input_cost_per_million,output_cost_per_million,enabled,updated_at) VALUES ('cf-flux-1-schnell','cloudflare-workers-ai','@cf/black-forest-labs/flux-1-schnell','[\"image_generation\"]',0,0,1,?) ON CONFLICT(id) DO UPDATE SET enabled=1,updated_at=excluded.updated_at").bind(now),
   ]);
 }
 
@@ -65,10 +66,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     .bind(callId, access.organizationId, id, job?.id ?? null, typeof input.taskId === 'string' ? input.taskId : null, route.selected.id, input.purpose.slice(0, 100), inputTokens, outputTokens, route.selected.estimatedCost, traceId, now).run();
   if (typeof input.prompt !== 'string') return NextResponse.json({ callId, traceId, model: { id: route.selected.id, provider: route.selected.provider, model: route.selected.model }, fallbackModelIds: route.fallbacks, estimatedCost: route.selected.estimatedCost, remainingBudget, status: 'estimated', execution: 'not_started' }, { status: 201 });
   if (!managed) return NextResponse.json({ callId, traceId, status: 'estimated', execution: 'external_adapter_required' }, { status: 202 });
-  const capability = requiredCapabilities.includes('vision') ? 'vision' : 'text';
+  const capability = requiredCapabilities.includes('image_generation') ? 'image_generation' : requiredCapabilities.includes('vision') ? 'vision' : 'text';
   const image = Array.isArray(input.image) ? input.image.filter((value): value is number => Number.isInteger(value) && value >= 0 && value <= 255) : undefined;
   try {
-    const response = await invokeManagedAI(env.AI_WORKER_URL!, env.AI_CONTROL_TOKEN!, { organizationId: access.organizationId, projectId: id, requestId: callId, capability, prompt: input.prompt.slice(0, 32_000), maxTokens: typeof input.maxTokens === 'number' ? Math.min(Math.max(Math.round(input.maxTokens), 1), 2048) : Math.min(Math.max(outputTokens, 1), 2048), image });
+    const response = await invokeManagedAI(env.AI_WORKER_URL!, env.AI_CONTROL_TOKEN!, { organizationId: access.organizationId, projectId: id, requestId: callId, capability, prompt: input.prompt.slice(0, capability === 'image_generation' ? 2_048 : 32_000), maxTokens: typeof input.maxTokens === 'number' ? Math.min(Math.max(Math.round(input.maxTokens), 1), 2048) : Math.min(Math.max(outputTokens, 1), 2048), image });
     const providerResult = response.result as { response?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } } | undefined;
     const actualInput = Number(providerResult?.usage?.prompt_tokens ?? inputTokens);
     const actualOutput = Number(providerResult?.usage?.completion_tokens ?? outputTokens);

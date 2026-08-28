@@ -23,7 +23,7 @@ export async function GET() {
     integrations: 'adapter_ready_requires_connections',
     mobile: 'profile_ready_requires_native_builder',
     billing: 'ledger_ready_requires_payment_provider',
-    voice: 'policy_ready_requires_streaming_provider',
+    voice: env.AI_WORKER_URL && env.AI_CONTROL_TOKEN ? 'managed_stt_connected_tts_degraded' : 'policy_ready_requires_streaming_provider',
     agentStudio: env.AI_WORKER_URL && env.AI_CONTROL_TOKEN ? 'managed_inference_connected' : 'versioning_ready_requires_ai_worker',
     mcp: 'permission_model_ready_requires_oauth_provider',
     collaboration: 'connected',
