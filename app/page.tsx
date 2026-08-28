@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type Project = {
   id: string;
@@ -20,18 +20,22 @@ const starterProjects: Project[] = [
 
 export default function Home() {
   const [view, setView] = useState<'home' | 'workspace'>('home');
-  const [projects, setProjects] = useState<Project[]>(() => {
-    if (typeof window === 'undefined') return starterProjects;
-    const saved = window.localStorage.getItem('fenix-projects');
-    if (!saved) return starterProjects;
-    try { return JSON.parse(saved) as Project[]; } catch { return starterProjects; }
-  });
+  const [projects, setProjects] = useState<Project[]>(starterProjects);
   const [prompt, setPrompt] = useState('');
   const [activeProject, setActiveProject] = useState<Project>(starterProjects[0]);
   const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [rightTab, setRightTab] = useState<'files' | 'tests' | 'deploy'>('files');
   const [briefOpen, setBriefOpen] = useState(true);
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const saved = window.localStorage.getItem('fenix-projects');
+      if (!saved) return;
+      try { setProjects(JSON.parse(saved) as Project[]); } catch { /* keep defaults */ }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   const totalProgress = useMemo(
     () => Math.round(projects.reduce((sum, project) => sum + project.progress, 0) / projects.length),
