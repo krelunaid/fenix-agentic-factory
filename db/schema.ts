@@ -191,6 +191,12 @@ export const artifacts = sqliteTable('artifacts', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 }, (table) => [uniqueIndex('idx_artifacts_storage_key').on(table.storageKey), index('idx_artifacts_job_kind').on(table.jobId, table.kind)]);
 
+export const artifactBlobs = sqliteTable('artifact_blobs', {
+  artifactId: text('artifact_id').primaryKey().references(() => artifacts.id),
+  base64Data: text('base64_data').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 export const previewSessions = sqliteTable('preview_sessions', {
   id: text('id').primaryKey(),
   projectId: text('project_id').notNull().references(() => projects.id),
@@ -293,6 +299,17 @@ export const aiCredentials = sqliteTable('ai_credentials', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
 }, (table) => [index('idx_ai_credentials_org_provider').on(table.organizationId, table.provider)]);
+
+export const secretRecords = sqliteTable('secret_records', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  projectId: text('project_id').references(() => projects.id),
+  ciphertext: text('ciphertext').notNull(),
+  iv: text('iv').notNull(),
+  createdBy: text('created_by').notNull().references(() => users.id),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
+}, (table) => [index('idx_secret_records_org').on(table.organizationId, table.createdAt)]);
 
 export const aiCalls = sqliteTable('ai_calls', {
   id: text('id').primaryKey(),

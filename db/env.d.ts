@@ -7,5 +7,6 @@ declare namespace Cloudflare {
     AI_CONTROL_TOKEN?: string;
     VISUAL_WORKER_URL?: string;
     VISUAL_CONTROL_TOKEN?: string;
+    CREDENTIALS_MASTER_KEY?: string;
   }
 }

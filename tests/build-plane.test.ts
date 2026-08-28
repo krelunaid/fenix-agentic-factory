@@ -18,6 +18,7 @@ import { authorizeMcpTool, sanitizeMcpOutput } from '../lib/mcp/policy';
 import { canProjectRole, optimisticCommentUpdate } from '../lib/collaboration/rbac';
 import { validateDesignTokens, validateVisualSelection } from '../lib/visual/policy';
 import { evaluateBetaCertification } from '../lib/hardening/certification';
+import { decryptSecret, encryptSecret } from '../lib/secret-broker';
 
 test('sandbox identifiers are stable and isolated by scope', async () => {
   const first = await deriveSandboxId({ organizationId: 'org-1', projectId: 'project-1', jobId: 'job-1' });
@@ -97,6 +98,14 @@ test('integration policy redacts secrets and gates side effects', () => {
   assert.deepEqual(redactSecrets({ apiKey: 'secret', nested: { note: 'Bearer abcdefghijklmnop' } }), { apiKey: '[REDACTED]', nested: { note: '[REDACTED]' } });
   assert.equal(requiresApproval('payment', 'charge'), true);
   assert.equal(validateIdempotencyKey('project:task:action:1234'), 'project:task:action:1234');
+});
+
+test('secret broker encrypts with scoped authenticated context', async () => {
+  const masterKey = Buffer.alloc(32, 7).toString('base64');
+  const encrypted = await encryptSecret(masterKey, 'provider-token', 'org:project:secret');
+  assert.notEqual(encrypted.ciphertext, 'provider-token');
+  assert.equal(await decryptSecret(masterKey, encrypted.ciphertext, encrypted.iv, 'org:project:secret'), 'provider-token');
+  await assert.rejects(() => decryptSecret(masterKey, encrypted.ciphertext, encrypted.iv, 'org:other:secret'));
 });
 
 test('source control policy refuses force, protected and secret pushes', () => {

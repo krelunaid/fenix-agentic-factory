@@ -50,6 +50,20 @@
       "when": 1787954918634,
       "tag": "0006_conscious_sprite",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787955590821,
+      "tag": "0007_nervous_red_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787955780877,
+      "tag": "0008_brief_riptide",
+      "breakpoints": true
     }
   ]
 }
