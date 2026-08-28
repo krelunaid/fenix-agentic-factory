@@ -38,10 +38,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const input = await request.json().catch(() => null) as { jobId?: unknown; taskId?: unknown; purpose?: unknown; requiredCapabilities?: unknown; estimatedInputTokens?: unknown; estimatedOutputTokens?: unknown; preferredProvider?: unknown; prompt?: unknown; image?: unknown; maxTokens?: unknown } | null;
   const requiredCapabilities = Array.isArray(input?.requiredCapabilities) ? input.requiredCapabilities.filter((value): value is ModelCapability => typeof value === 'string' && capabilities.has(value as ModelCapability)) : [];
   if (!input || typeof input.purpose !== 'string' || !requiredCapabilities.length) return NextResponse.json({ error: 'invalid_route_request' }, { status: 400 });
-  const inputTokens = typeof input.estimatedInputTokens === 'number' ? Math.max(0, Math.round(input.estimatedInputTokens)) : 0;
-  const outputTokens = typeof input.estimatedOutputTokens === 'number' ? Math.max(0, Math.round(input.estimatedOutputTokens)) : 0;
-  const job = typeof input.jobId === 'string' ? await env.DB.prepare('SELECT id,budget_limit FROM jobs WHERE id=? AND project_id=?').bind(input.jobId, id).first<{ id: string; budget_limit: number }>() : null;
+  const requestedInputTokens = typeof input.estimatedInputTokens === 'number' ? Math.max(0, Math.round(input.estimatedInputTokens)) : 0;
+  const requestedOutputTokens = typeof input.estimatedOutputTokens === 'number' ? Math.max(0, Math.round(input.estimatedOutputTokens)) : 0;
+  const inputTokens = Math.max(requestedInputTokens, typeof input.prompt === 'string' ? Math.ceil(input.prompt.length / 4) : 0);
+  const outputTokens = Math.max(requestedOutputTokens, typeof input.maxTokens === 'number' ? Math.min(Math.max(Math.round(input.maxTokens), 1), 2048) : 0);
+  const job = typeof input.jobId === 'string' ? await env.DB.prepare('SELECT id,status,budget_limit FROM jobs WHERE id=? AND project_id=?').bind(input.jobId, id).first<{ id: string; status: string; budget_limit: number }>() : null;
   if (typeof input.jobId === 'string' && !job) return NextResponse.json({ error: 'job_scope_mismatch' }, { status: 400 });
+  if (job && !['RUNNING', 'VALIDATING'].includes(job.status)) return NextResponse.json({ error: 'job_not_executable', status: job.status }, { status: 409 });
   const usage = await env.DB.prepare('SELECT COALESCE(SUM(amount),0) AS amount FROM usage_ledger WHERE project_id=?').bind(id).first<{ amount: number }>();
   const remainingBudget = Math.max(0, (job?.budget_limit ?? 25) - (usage?.amount ?? 0));
   await ensureManagedCatalog();
@@ -54,7 +57,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     route = routeModel(models, { requiredCapabilities, estimatedInputTokens: inputTokens, estimatedOutputTokens: outputTokens, maxEstimatedCost: remainingBudget, preferredProvider: typeof input.preferredProvider === 'string' ? input.preferredProvider : undefined });
   } catch {
-    return NextResponse.json({ error: models.length ? 'no_eligible_model_within_budget' : 'ai_provider_not_configured', remainingBudget }, { status: 503 });
+    const capabilityCandidates = models.filter((model) => requiredCapabilities.every((capability) => model.capabilities.includes(capability)));
+    const lowestEstimate = capabilityCandidates.length ? Math.min(...capabilityCandidates.map((model) => (inputTokens * model.inputCostPerMillion + outputTokens * model.outputCostPerMillion) / 1_000_000)) : null;
+    if (job && lowestEstimate !== null && lowestEstimate > remainingBudget) {
+      const pausedAt = Date.now();
+      await env.DB.batch([
+        env.DB.prepare("UPDATE jobs SET status='PAUSED',updated_at=? WHERE id=? AND project_id=? AND status IN ('RUNNING','VALIDATING')").bind(pausedAt, job.id, id),
+        env.DB.prepare("INSERT INTO build_events (id,trace_id,project_id,job_id,type,severity,human_message,cost_delta,created_at) VALUES (?,?,?,?, 'budget.exhausted','warning','Job sospeso: budget IA insufficiente',0,?)").bind(crypto.randomUUID(), crypto.randomUUID(), id, job.id, pausedAt),
+      ]);
+      return NextResponse.json({ error: 'budget_exhausted_job_paused', remainingBudget, requiredEstimate: lowestEstimate }, { status: 402 });
+    }
+    return NextResponse.json({ error: models.length ? 'no_eligible_model' : 'ai_provider_not_configured', remainingBudget }, { status: 503 });
   }
   const managed = route.selected.provider === 'cloudflare-workers-ai' && env.AI_WORKER_URL && env.AI_CONTROL_TOKEN;
   const credential = managed ? { id: 'managed' } : await env.DB.prepare("SELECT id FROM ai_credentials WHERE organization_id=? AND provider=? AND status='active' ORDER BY created_at DESC LIMIT 1").bind(access.organizationId, route.selected.provider).first();

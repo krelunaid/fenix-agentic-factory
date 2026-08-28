@@ -97,7 +97,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         await env.DB.prepare("UPDATE agent_runs SET status='blocked',cost=?,evaluation_json=? WHERE id=?").bind(cost, JSON.stringify({ reason: 'cost_cap_exceeded', promptTokens, completionTokens }), runId).run();
         return NextResponse.json({ error: 'agent_cost_cap_exceeded', id: runId, traceId }, { status: 409 });
       }
-      await env.DB.prepare("UPDATE agent_runs SET status='completed',cost=?,evaluation_json=? WHERE id=?").bind(cost, JSON.stringify({ promptTokens, completionTokens, provider: 'cloudflare-workers-ai', guardrailsApplied: true, toolsExecuted: toolResults.map((item) => item.tool) }), runId).run();
+      await env.DB.batch([
+        env.DB.prepare("UPDATE agent_runs SET status='completed',cost=?,evaluation_json=? WHERE id=?").bind(cost, JSON.stringify({ promptTokens, completionTokens, provider: 'cloudflare-workers-ai', guardrailsApplied: true, toolsExecuted: toolResults.map((item) => item.tool) }), runId),
+        env.DB.prepare("INSERT INTO usage_ledger (id,organization_id,project_id,task_id,kind,units,amount,created_at) VALUES (?,?,?,NULL,'agent_tokens',?,?,?)").bind(crypto.randomUUID(), access.organizationId, id, promptTokens + completionTokens, cost, Date.now()),
+      ]);
       return NextResponse.json({ id: runId, traceId, status: 'completed', response: provider?.response ?? result, toolResults, cost });
     } catch (error) {
       await env.DB.prepare("UPDATE agent_runs SET status='failed',evaluation_json=? WHERE id=?").bind(JSON.stringify({ error: error instanceof Error ? error.message : 'agent_inference_failed' }), runId).run();
