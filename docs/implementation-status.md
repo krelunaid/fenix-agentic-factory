@@ -6,7 +6,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | --- | --- | --- |
 | 0 - Baseline greenfield | PASS | Stack, confini e capacità mancanti documentati |
 | 1 - Brand FENIX | PASS | Nome, metadata e copy originali |
-| 2 - Design system e shell | PARTIAL | Home e workspace responsive implementati; manca suite visuale |
+| 2 - Design system e shell | PARTIAL | Home e workspace responsive con chat, preview sandbox, repo, test e deploy reali; manca una regression suite visuale multi-browser |
 | 3 - Identity e project core | PARTIAL | Identità ChatGPT, D1, organizzazioni, membership, CRUD progetto e audit |
 | 4 - Conversation e brief | PARTIAL | Brief versionato, cronologia persistente e risposta Workers AI con trace/costi collegate alla UI; resta lo streaming token-by-token |
 | 5 - Task graph | PARTIAL | DAG, dipendenze, claim atomico, tentativi e state machine persistenti |
@@ -45,6 +45,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Patch runtime: write/read/delete firmati verificati sul sandbox distribuito; contenuto e precondition hash, rollback e audit sono fail-closed nel Control Plane.
 - AI Gateway: health PASS; inferenza text firmata reale PASS (`FENIX_AI_OK`) e image generation FLUX reale PASS (JPEG base64 verificato), con catalogo, token usage e ledger tenant-aware.
 - Conversation runtime: messaggi utente/assistente persistenti, risposta managed AI, trace, budget fail-closed e ledger collegati al composer del workspace.
+- Workspace runtime: iframe sandboxato solo per preview live non scadute, file index, quality run e deployment reali; fallback esplicitamente marcati come mockup.
 - Secret broker: cifratura AES-256-GCM con AAD tenant/progetto/record, riferimenti opachi, revoca coordinata e validatori live GitHub/OpenAI/Stripe senza persistenza in chiaro.
 - Voice provider: STT Whisper firmato PASS su audio AIFF reale (`Phoenix is operational.`); TTS MeloTTS configurato ma non dichiarato operativo perché il provider restituisce errore 3043.
 - Visual runner: Browser Rendering firmato PASS su viewport mobile, selector mapping, bounding box, crop PNG hash e accessibility role.
