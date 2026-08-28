@@ -5,7 +5,7 @@ The release threshold remains fail-closed. `READY` means the internal implementa
 | Scenario | Readiness | Missing evidence / blocker |
 | --- | --- | --- |
 | C1 SaaS from one prompt | READY | Three complete non-technical-user runs and export evidence |
-| C2 Local visual revision | READY | Three perceptual screenshot diffs; only exact-hash diff is implemented |
+| C2 Local visual revision | READY | Three scoped revision runs; exact and perceptual baseline diff are implemented |
 | C3 Bug recovery | READY | Three injected runtime-fault runs with ≤3 attempts |
 | C4 Rollback and fork | BLOCKED | Physical restore requires R2 enablement; logical graph is implemented |
 | C5 GitHub | BLOCKED | GitHub App/OAuth installation and repository credentials |

@@ -24,14 +24,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const access = await requireProjectAccess(id);
   if (!access) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (!canOperate(access.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  const input = await request.json().catch(() => null) as { action?: unknown; selector?: unknown; sourcePath?: unknown; sourceLine?: unknown; frozenPaths?: unknown; previewId?: unknown; cropArtifactId?: unknown; constraints?: unknown; sourceArtifactId?: unknown; tokens?: unknown; width?: unknown; height?: unknown; baselineSha256?: unknown } | null;
+  const input = await request.json().catch(() => null) as { action?: unknown; selector?: unknown; sourcePath?: unknown; sourceLine?: unknown; frozenPaths?: unknown; previewId?: unknown; cropArtifactId?: unknown; constraints?: unknown; sourceArtifactId?: unknown; tokens?: unknown; width?: unknown; height?: unknown; baselineSha256?: unknown; baselineArtifactId?: unknown } | null;
   const now = Date.now();
   if (input?.action === 'inspect' && typeof input.selector === 'string' && typeof input.previewId === 'string') {
     if (!env.VISUAL_WORKER_URL || !env.VISUAL_CONTROL_TOKEN) return NextResponse.json({ error: 'visual_provider_not_configured' }, { status: 503 });
     const preview = await env.DB.prepare("SELECT id,job_id,url FROM preview_sessions WHERE id=? AND project_id=? AND status='ready' AND expires_at>?").bind(input.previewId, id, now).first<{ id: string; job_id: string; url: string }>();
     if (!preview?.url) return NextResponse.json({ error: 'ready_preview_required' }, { status: 409 });
+    const baseline = typeof input.baselineArtifactId === 'string' ? await env.DB.prepare("SELECT a.id,a.sha256,b.base64_data FROM artifacts a JOIN artifact_blobs b ON b.artifact_id=a.id WHERE a.id=? AND a.project_id=? AND a.media_type='image/png'").bind(input.baselineArtifactId, id).first<{ id: string; sha256: string; base64_data: string }>() : null;
+    if (typeof input.baselineArtifactId === 'string' && !baseline) return NextResponse.json({ error: 'baseline_artifact_not_found' }, { status: 404 });
     try {
-      const inspection = await inspectVisualTarget(env.VISUAL_WORKER_URL, env.VISUAL_CONTROL_TOKEN, { organizationId: access.organizationId, projectId: id, requestId: crypto.randomUUID(), url: preview.url, selector: input.selector, width: typeof input.width === 'number' ? input.width : undefined, height: typeof input.height === 'number' ? input.height : undefined, baselineSha256: typeof input.baselineSha256 === 'string' ? input.baselineSha256 : undefined });
+      const inspection = await inspectVisualTarget(env.VISUAL_WORKER_URL, env.VISUAL_CONTROL_TOKEN, { organizationId: access.organizationId, projectId: id, requestId: crypto.randomUUID(), url: preview.url, selector: input.selector, width: typeof input.width === 'number' ? input.width : undefined, height: typeof input.height === 'number' ? input.height : undefined, baselineSha256: baseline?.sha256 ?? (typeof input.baselineSha256 === 'string' ? input.baselineSha256 : undefined), baselineBase64: baseline?.base64_data });
       const metadata = inspection.metadata as { source?: { path?: string | null; line?: number | null }; box?: unknown; styles?: unknown; domPath?: unknown } | undefined;
       const frozenPaths = Array.isArray(input.frozenPaths) ? input.frozenPaths.filter((value): value is string => typeof value === 'string') : [];
       const selection = validateVisualSelection({ selector: input.selector, sourcePath: metadata?.source?.path ?? undefined, sourceLine: metadata?.source?.line ?? undefined, frozenPaths });
@@ -43,7 +45,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       const artifactId = persistable ? crypto.randomUUID() : null;
       const sha256 = persistable ? hex(await crypto.subtle.digest('SHA-256', decoded)) : (typeof screenshot?.sha256 === 'string' ? screenshot.sha256 : null);
       const statements = [
-        env.DB.prepare('INSERT INTO visual_selections (id,project_id,preview_id,selector,source_path,source_line,crop_artifact_id,constraints_json,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(selectionId, id, input.previewId, input.selector, selection.sourcePath ?? null, selection.sourceLine ?? null, artifactId, JSON.stringify({ viewport: inspection.viewport, box: metadata?.box, styles: metadata?.styles, domPath: metadata?.domPath, screenshotSha256: sha256, visualDiff: inspection.visualDiff }), access.user.userId, now),
+        env.DB.prepare('INSERT INTO visual_selections (id,project_id,preview_id,selector,source_path,source_line,crop_artifact_id,constraints_json,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(selectionId, id, input.previewId, input.selector, selection.sourcePath ?? null, selection.sourceLine ?? null, artifactId, JSON.stringify({ viewport: inspection.viewport, box: metadata?.box, styles: metadata?.styles, domPath: metadata?.domPath, screenshotSha256: sha256, baselineArtifactId: baseline?.id ?? null, visualDiff: inspection.visualDiff }), access.user.userId, now),
       ];
       if (artifactId) {
         statements.push(

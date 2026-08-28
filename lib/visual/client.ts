@@ -1,6 +1,6 @@
 function toHex(buffer: ArrayBuffer) { return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, '0')).join(''); }
 
-export async function inspectVisualTarget(baseUrl: string, secret: string, input: { organizationId: string; projectId: string; requestId: string; url: string; selector: string; width?: number; height?: number; baselineSha256?: string }) {
+export async function inspectVisualTarget(baseUrl: string, secret: string, input: { organizationId: string; projectId: string; requestId: string; url: string; selector: string; width?: number; height?: number; baselineSha256?: string; baselineBase64?: string }) {
   if (!/^https:\/\//.test(baseUrl) || secret.length < 32) throw new Error('invalid_visual_provider_configuration');
   const path = '/v1/inspect';
   const body = JSON.stringify(input);

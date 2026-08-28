@@ -27,7 +27,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 20 - Agent Studio | PARTIAL | Profili/versioni, managed inference e tool read-only project/repository/quality con trace, approval e cost/step cap; restano subagent sandbox ed eval publish |
 | 21 - MCP | PARTIAL | Connection registry, permission/rate-limit/output policy e revoca; OAuth server e transport non distribuiti |
 | 22 - Team | PARTIAL | Project-scoped RBAC reale, invite, comment threads, inbox persistente e quorum multi-approval con vote audit; resta delivery push/email |
-| 23 - Visual select | PARTIAL | Browser runner HMAC/SSRF-guarded con DOM path, styles, crop PNG persistito, a11y snapshot, responsive viewport ed exact visual diff; resta il perceptual diff |
+| 23 - Visual select | PARTIAL | Browser runner HMAC/SSRF-guarded con DOM path, styles, crop PNG persistito, a11y snapshot, viewport responsive e diff exact/perceptual; restano patch planning semantico e token extraction automatica |
 | 24 - Hardening | PARTIAL | Operations API, provider health load, backup/certification project-scoped, SLO e runbook; C1-C15 x3, data-plane load e restore reali non eseguiti |
 
 ## Evidence della slice
@@ -50,6 +50,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Agent Studio: esecuzione deterministica di tool dichiarati e autorizzati (`project.summary`, `repository.search`, `quality.status`), risultati trattati come dati e trace persistito.
 - Voice provider: STT Whisper firmato PASS su audio AIFF reale (`Phoenix is operational.`); TTS MeloTTS configurato ma non dichiarato operativo perché il provider restituisce errore 3043.
 - Visual runner: Browser Rendering firmato PASS su viewport mobile, selector mapping, bounding box, crop PNG hash e accessibility role.
+- Visual diff: confronto firmato exact e perceptual PASS su baseline PNG reale (`exactMatch=true`, mismatch ratio `0`, 6.552 pixel campionati).
 - Artifact blob: crop PNG fino a 750 KB persistito in D1, referenziato dal registry e servito con scope job, CSP, nosniff ed ETag.
 - Provider health load: 180/180 risposte riuscite sui tre Worker production, p95 187–313 ms; non sostituisce un benchmark inference/sandbox/browser.
 - Schema replay: 55 tabelle applicate in SQLite isolato, migrazione legacy certification preservata e `foreign_key_check` con zero errori.

@@ -1,7 +1,7 @@
 import puppeteer from '@cloudflare/puppeteer';
 
 type Env = { BROWSER: Fetcher; CONTROL_PLANE_TOKEN: string };
-type Input = { organizationId: string; projectId: string; requestId: string; url: string; selector: string; width?: number; height?: number; baselineSha256?: string };
+type Input = { organizationId: string; projectId: string; requestId: string; url: string; selector: string; width?: number; height?: number; baselineSha256?: string; baselineBase64?: string };
 const encoder = new TextEncoder();
 const idPattern = /^[a-zA-Z0-9_-]{1,96}$/;
 
@@ -47,6 +47,7 @@ export default {
     let input: Input;
     try { input = JSON.parse(body) as Input; } catch { return Response.json({ error: 'invalid_json' }, { status: 400 }); }
     if (![input.organizationId, input.projectId, input.requestId].every((value) => typeof value === 'string' && idPattern.test(value)) || typeof input.selector !== 'string' || input.selector.length < 1 || input.selector.length > 500) return Response.json({ error: 'invalid_request' }, { status: 400 });
+    if (input.baselineBase64 && (input.baselineBase64.length > 1_100_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(input.baselineBase64))) return Response.json({ error: 'invalid_baseline' }, { status: 400 });
     let target: string;
     try { target = safeTarget(input.url); } catch { return Response.json({ error: 'unsafe_target' }, { status: 400 }); }
     const width = Math.min(Math.max(Math.round(input.width ?? 1440), 320), 1920);
@@ -72,9 +73,21 @@ export default {
         return { box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, domPath: path.join(' > '), text: (element.innerText || '').slice(0, 2_000), html: element.outerHTML.slice(0, 10_000), source: { path: element.dataset.sourcePath ?? null, line: Number(element.dataset.sourceLine) || null }, styles: { color: style.color, backgroundColor: style.backgroundColor, fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight, borderRadius: style.borderRadius } };
       });
       const screenshot = await element.screenshot({ encoding: 'base64', type: 'png' }) as string;
-      const sha256 = hex(await crypto.subtle.digest('SHA-256', encoder.encode(screenshot)));
+      const screenshotBytes = Uint8Array.from(atob(screenshot), (character) => character.charCodeAt(0));
+      const sha256 = hex(await crypto.subtle.digest('SHA-256', screenshotBytes));
       const accessibility = await page.accessibility.snapshot({ root: element });
-      return Response.json({ url: target, selector: input.selector, viewport: { width, height }, metadata, screenshot: { mediaType: 'image/png', base64: screenshot, sha256 }, visualDiff: input.baselineSha256 ? { exactMatch: input.baselineSha256 === sha256, baselineSha256: input.baselineSha256, currentSha256: sha256 } : null, accessibility });
+      const perceptual = input.baselineBase64 ? await page.evaluate(async ({ baseline, current }) => {
+        const load = (source: string) => new Promise<HTMLImageElement>((resolve, reject) => { const image = new Image(); image.onload = () => resolve(image); image.onerror = reject; image.src = `data:image/png;base64,${source}`; });
+        const [before, after] = await Promise.all([load(baseline), load(current)]);
+        if (before.width > 4000 || before.height > 4000 || after.width > 4000 || after.height > 4000) throw new Error('baseline_dimensions_exceeded');
+        const width = Math.max(before.width, after.width); const height = Math.max(before.height, after.height);
+        const render = (image: HTMLImageElement) => { const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height; const context = canvas.getContext('2d', { willReadFrequently: true }); if (!context) throw new Error('canvas_unavailable'); context.drawImage(image, 0, 0); return context.getImageData(0, 0, width, height).data; };
+        const a = render(before); const b = render(after); const stride = Math.max(1, Math.ceil(Math.sqrt((width * height) / 250_000)));
+        let sampled = 0; let mismatched = 0; let deltaTotal = 0;
+        for (let y = 0; y < height; y += stride) for (let x = 0; x < width; x += stride) { const offset = (y * width + x) * 4; const delta = Math.abs(a[offset] - b[offset]) + Math.abs(a[offset + 1] - b[offset + 1]) + Math.abs(a[offset + 2] - b[offset + 2]) + Math.abs(a[offset + 3] - b[offset + 3]); sampled++; deltaTotal += delta; if (delta > 48) mismatched++; }
+        return { mismatchRatio: sampled ? mismatched / sampled : 0, meanChannelDelta: sampled ? deltaTotal / (sampled * 4 * 255) : 0, sampledPixels: sampled, baselineSize: { width: before.width, height: before.height }, currentSize: { width: after.width, height: after.height } };
+      }, { baseline: input.baselineBase64, current: screenshot }) : null;
+      return Response.json({ url: target, selector: input.selector, viewport: { width, height }, metadata, screenshot: { mediaType: 'image/png', base64: screenshot, sha256 }, visualDiff: input.baselineSha256 ? { exactMatch: input.baselineSha256 === sha256, baselineSha256: input.baselineSha256, currentSha256: sha256, perceptual } : null, accessibility });
     } finally { await browser.close(); }
   },
 } satisfies ExportedHandler<Env>;
