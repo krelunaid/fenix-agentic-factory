@@ -11,7 +11,7 @@
 | GitHub | Partial | Sync records e push/secret/conflict policy | GitHub App/OAuth e worker Git |
 | Deploy | Partial | Release/smoke/approval/rollback gate | Provider staging/production |
 | Mobile | Partial | Profilo e native compatibility gate | Expo/EAS build e C9 |
-| AI Gateway | Partial | Capability routing, estimate/fallback/call ledger | Provider inference e secret broker |
+| AI Gateway | Partial | Workers AI text/vision reale, routing, budget e usage/cost ledger | Image generation e BYOK provider esterni |
 | Agent Studio | Partial | Profili/versioni/guardrail/run trace | AI worker, eval sandbox e publish |
 | MCP | Partial | Registry, permission, revoke, rate/output policy | OAuth server/client transport e C11 |
 | Cost attribution | Partial | Tabella ledger tenant-aware | Ingestion provider e reconciliation |

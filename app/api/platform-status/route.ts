@@ -17,7 +17,7 @@ export async function GET() {
     repositoryIndex: 'connected',
     qualityEvidence: 'connected',
     recoveryKernel: 'connected',
-    aiGateway: 'requires_provider',
+    aiGateway: env.AI_WORKER_URL && env.AI_CONTROL_TOKEN ? 'connected' : 'requires_provider',
     github: 'requires_connection',
     deploymentAdapter: 'requires_connection',
     integrations: 'adapter_ready_requires_connections',
