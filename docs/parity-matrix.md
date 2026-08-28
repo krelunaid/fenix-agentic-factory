@@ -7,10 +7,13 @@
 | Preview web | Partial | Switch device, sessioni D1 e tunnel provider contract | Distribuzione runtime isolato |
 | Test ed evidence | Partial | Quality/evidence/defect API fail-closed | Runner e blob storage distribuiti |
 | Patch localizzata | Partial | Repo index e policy scope/freeze/precondition testate | Applicazione sandbox e review visuale |
-| GitHub | Assente | - | OAuth/App, branch e PR |
-| Deploy | Assente | Human gate visibile | Provider staging/production |
-| Mobile | Assente | Viewport mobile non è app nativa | Expo pipeline |
-| AI Gateway | Assente | - | Routing, BYOK e ledger |
-| Agent Studio | Assente | - | Tool, memoria e policy |
-| MCP | Assente | - | Client/server OAuth |
+| GitHub | Partial | Sync records e push/secret/conflict policy | GitHub App/OAuth e worker Git |
+| Deploy | Partial | Release/smoke/approval/rollback gate | Provider staging/production |
+| Mobile | Partial | Profilo e native compatibility gate | Expo/EAS build e C9 |
+| AI Gateway | Partial | Capability routing, estimate/fallback/call ledger | Provider inference e secret broker |
+| Agent Studio | Partial | Profili/versioni/guardrail/run trace | AI worker, eval sandbox e publish |
+| MCP | Partial | Registry, permission, revoke, rate/output policy | OAuth server/client transport e C11 |
 | Cost attribution | Partial | Tabella ledger tenant-aware | Ingestion provider e reconciliation |
+| Team collaboration | Partial | Project RBAC e commenti persistenti | Notification delivery e race test distribuito |
+| Visual select | Partial | Source/freeze/token contract | Browser DOM mapping e visual diff runner |
+| Beta certification | Non certificato | Matrice C1-C15 x3 fail-closed | 45 run reali con evidence |

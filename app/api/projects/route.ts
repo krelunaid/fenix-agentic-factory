@@ -45,8 +45,13 @@ export async function GET() {
   const core = await requireCoreUser();
   if (!core) return NextResponse.json({ error: 'authentication_required' }, { status: 401 });
 
-  const result = await env.DB.prepare('SELECT id,name,description,status,progress,tone,updated_at FROM projects WHERE organization_id=? ORDER BY updated_at DESC LIMIT 50').bind(core.orgId).all<ProjectRow>();
-  return NextResponse.json({ user: core.user, organizationId: core.orgId, projects: result.results.map(projectJson) });
+  const [result, activeJobs, evidenceToday, spendMonth] = await Promise.all([
+    env.DB.prepare('SELECT id,name,description,status,progress,tone,updated_at FROM projects WHERE organization_id=? ORDER BY updated_at DESC LIMIT 50').bind(core.orgId).all<ProjectRow>(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM jobs j JOIN projects p ON p.id=j.project_id WHERE p.organization_id=? AND j.status IN ('RUNNING','WAITING_APPROVAL','QUEUED')").bind(core.orgId).first<{ count: number }>(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM evidence e JOIN quality_runs q ON q.id=e.quality_run_id JOIN projects p ON p.id=q.project_id WHERE p.organization_id=? AND e.created_at>=?").bind(core.orgId, new Date().setHours(0, 0, 0, 0)).first<{ count: number }>(),
+    env.DB.prepare('SELECT COALESCE(SUM(amount),0) AS amount FROM usage_ledger WHERE organization_id=? AND created_at>=?').bind(core.orgId, new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()).first<{ amount: number }>(),
+  ]);
+  return NextResponse.json({ user: core.user, organizationId: core.orgId, projects: result.results.map(projectJson), stats: { activeJobs: activeJobs?.count ?? 0, evidenceToday: evidenceToday?.count ?? 0, spendMonth: spendMonth?.amount ?? 0 } });
 }
 
 export async function POST(request: Request) {
@@ -63,10 +68,27 @@ export async function POST(request: Request) {
   const specificationId = crypto.randomUUID();
   const jobId = crypto.randomUUID();
   const taskDefinitions = [
-    ['Analisi del brief', 4, 'ready'],
-    ['Piano architetturale', 5, 'blocked'],
+    ['Product Brief e scenari', 4, 'ready'],
+    ['Piano architetturale e task graph', 5, 'blocked'],
+    ['Queue, eventi e budget', 6, 'blocked'],
+    ['Provisioning sandbox isolata', 7, 'blocked'],
     ['Scaffold full-stack', 8, 'blocked'],
-    ['Quality gate', 11, 'blocked'],
+    ['Preview runtime', 9, 'blocked'],
+    ['Repo index e patch localizzata', 10, 'blocked'],
+    ['Quality gate ed evidence', 11, 'blocked'],
+    ['Snapshot, rollback e fork', 12, 'blocked'],
+    ['AI routing e cost ledger', 13, 'blocked'],
+    ['Source control e pull request', 14, 'blocked'],
+    ['Staging, produzione e domini', 15, 'blocked'],
+    ['Integrazioni e secret broker', 16, 'blocked'],
+    ['Profilo e build mobile nativa', 17, 'blocked'],
+    ['Billing, credits e reconciliation', 18, 'blocked'],
+    ['Voice mode e confirmation policy', 19, 'blocked'],
+    ['Agent Studio ed evaluation', 20, 'blocked'],
+    ['MCP client/server e OAuth', 21, 'blocked'],
+    ['Team, commenti e approval', 22, 'blocked'],
+    ['Visual select e design tokens', 23, 'blocked'],
+    ['Hardening e beta certification', 24, 'blocked'],
   ] as const;
   const taskIds = taskDefinitions.map(() => crypto.randomUUID());
   const statements = [

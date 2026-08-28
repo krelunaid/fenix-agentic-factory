@@ -19,6 +19,15 @@ export async function GET() {
     recoveryKernel: 'connected',
     aiGateway: 'requires_provider',
     github: 'requires_connection',
-    deploymentAdapter: 'planned',
+    deploymentAdapter: 'requires_connection',
+    integrations: 'adapter_ready_requires_connections',
+    mobile: 'profile_ready_requires_native_builder',
+    billing: 'ledger_ready_requires_payment_provider',
+    voice: 'policy_ready_requires_streaming_provider',
+    agentStudio: 'versioning_ready_requires_ai_worker',
+    mcp: 'permission_model_ready_requires_oauth_provider',
+    collaboration: 'connected',
+    visualSelect: 'mapping_contract_ready_requires_browser_runner',
+    betaCertification: 'not_certified',
   });
 }

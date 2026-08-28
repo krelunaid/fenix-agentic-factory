@@ -27,9 +27,11 @@ const starterProjects: Project[] = [
   { id: 'atlas', name: 'Atlas Mobile', description: 'Companion app per team sul campo', status: 'Planning', progress: 24, updated: '3 giorni fa', tone: 'amber' },
 ];
 
+type CoreStats = { activeJobs: number; evidenceToday: number; spendMonth: number };
+
 export default function Home() {
   const [view, setView] = useState<'home' | 'workspace'>('home');
-  const [projects, setProjects] = useState<Project[]>(starterProjects);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeProject, setActiveProject] = useState<Project>(starterProjects[0]);
   const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
@@ -40,17 +42,19 @@ export default function Home() {
   const [displayName, setDisplayName] = useState('André');
   const [workspaceData, setWorkspaceData] = useState<WorkspaceData | null>(null);
   const [workspaceState, setWorkspaceState] = useState<CoreState>('checking');
+  const [stats, setStats] = useState<CoreStats>({ activeJobs: 0, evidenceToday: 0, spendMonth: 0 });
 
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/projects', { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('core_unavailable');
-        return response.json() as Promise<{ projects: Project[]; user: { displayName: string } }>;
+        return response.json() as Promise<{ projects: Project[]; user: { displayName: string }; stats: CoreStats }>;
       })
       .then((data) => {
         setProjects(data.projects);
         setDisplayName(data.user.displayName.split(/\s|@/)[0] || 'André');
+        setStats(data.stats);
         setCoreState('connected');
       })
       .catch((error: unknown) => {
@@ -155,7 +159,7 @@ export default function Home() {
               <aside className="pulse-card">
                 <div className="pulse-orbit"><span>F</span><i /></div>
                 <div><span className="section-label">IMPULSO OPERATIVO</span><strong>{totalProgress}%</strong><p>Avanzamento medio dei progetti attivi</p></div>
-                <dl><div><dt>Build attive</dt><dd>01</dd></div><div><dt>Evidence oggi</dt><dd>18</dd></div><div><dt>Budget mensile</dt><dd>€ 42,80</dd></div></dl>
+                <dl><div><dt>Build attive</dt><dd>{String(stats.activeJobs).padStart(2, '0')}</dd></div><div><dt>Evidence oggi</dt><dd>{stats.evidenceToday}</dd></div><div><dt>Spesa mensile</dt><dd>€ {stats.spendMonth.toFixed(2)}</dd></div></dl>
               </aside>
             </section>
 
@@ -178,7 +182,7 @@ export default function Home() {
           <header className="workspace-topbar">
             <div className="project-identity"><button onClick={() => setView('home')}>←</button><div><span>PROGETTO</span><strong>{activeProject.name}</strong></div><span className={`status ${activeProject.status.toLowerCase()}`}>{activeProject.status}</span></div>
             <div className="branch-pill">⑂ main</div>
-            <div className="workspace-actions"><span className="cost-pill">Sessione € 1,42</span><button>Condividi</button><button className="publish-button">Pubblica</button></div>
+            <div className="workspace-actions"><span className="cost-pill">Sessione € {Number(workspaceData?.usage?.amount ?? 0).toFixed(2)}</span><button>Condividi</button><button className="publish-button">Pubblica</button></div>
           </header>
 
           <div className="workspace-grid">
@@ -196,6 +200,7 @@ export default function Home() {
             <section className="preview-panel">
               <div className="preview-toolbar"><div><span className={`live-dot ${workspaceState}`}/>{workspaceState === 'connected' ? 'Control Plane connesso' : workspaceState === 'checking' ? 'Connessione workspace' : 'Preview dimostrativa'}</div><div className="device-switcher"><button className={device === 'desktop' ? 'active' : ''} onClick={() => setDevice('desktop')}>▰</button><button className={device === 'tablet' ? 'active' : ''} onClick={() => setDevice('tablet')}>▯</button><button className={device === 'mobile' ? 'active' : ''} onClick={() => setDevice('mobile')}>▥</button></div><button>↗</button></div>
               <div className="preview-canvas">
+                <span className="preview-honesty">Mockup di superficie · runtime generato non collegato</span>
                 <div className={`device-frame ${device}`}><div className="mock-app"><aside><b>O</b><i/><i/><i/><i/></aside><div className="mock-main"><header><div><small>OVERVIEW</small><h3>Buongiorno, team.</h3></div><span>＋ Nuovo cliente</span></header><div className="mock-stats"><article><small>RICAVI</small><strong>€ 48.240</strong><em>+12,4%</em></article><article><small>PROGETTI</small><strong>24</strong><em>6 attivi</em></article><article><small>CLIENTI</small><strong>128</strong><em>+8 questo mese</em></article></div><div className="mock-chart"><div><small>ANDAMENTO</small><strong>Ricavi mensili</strong></div><div className="bars">{[36,54,43,68,61,82,76,92].map((height, index)=><i key={index} style={{height:`${height}%`}}/>)}</div></div><div className="mock-table"><span>Attività recenti</span>{['Studio Delta','Forma Labs','Nord&Co'].map((name,index)=><div key={name}><b>{name}</b><i/><em>{['€ 4.200','€ 2.850','€ 6.100'][index]}</em></div>)}</div></div></div></div>
               </div>
               <div className="log-drawer"><span>{workspaceData ? 'EVENTI CONTROL PLANE' : 'EVENTI DIMOSTRATIVI'}</span>{workspaceData?.events.slice(-2).map((event) => <code key={event.id}><i>{new Date(event.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</i> {event.human_message}</code>)}{!workspaceData && <><code><i>21:44</i> Preview dimostrativa aggiornata</code><code><i>21:43</i> Nessun runner collegato</code></>}</div>
@@ -203,7 +208,7 @@ export default function Home() {
 
             <aside className="inspector-panel">
               <div className="panel-tabs inspector-tabs">{(['files','tests','deploy'] as const).map(tab => <button key={tab} className={rightTab===tab?'active':''} onClick={()=>setRightTab(tab)}>{tab==='files'?'File':tab==='tests'?'Test':'Deploy'}</button>)}</div>
-              {rightTab === 'files' && <div className="file-tree"><div className="inspector-heading"><span>FILE MODIFICATI</span><b>3</b></div><button>⌄ app</button><button className="nested">◇ dashboard</button><button className="nested active"># page.tsx <em>M</em></button><button>⌄ components</button><button className="nested">◇ metrics.tsx <em>M</em></button><button>⌄ lib</button><button className="nested">TS schema.ts</button><div className="diff-card"><span>ULTIMA PATCH</span><strong>Dashboard overview</strong><p>3 file · +184 −12</p><button>Vedi differenze</button></div></div>}
+              {rightTab === 'files' && <div className="file-tree"><div className="inspector-heading"><span>MAPPA DIMOSTRATIVA</span><b>—</b></div><button>⌄ app</button><button className="nested">◇ dashboard</button><button className="nested active"># page.tsx</button><button>⌄ components</button><button className="nested">◇ metrics.tsx</button><button>⌄ lib</button><button className="nested">TS schema.ts</button><div className="diff-card"><span>REPO INDEX</span><strong>Provider non collegato</strong><p>Nessuna patch dichiarata</p><button>Configura</button></div></div>}
               {rightTab === 'tests' && <div className="test-list"><div className="quality-score"><span>{workspaceData ? 'TASK GRAPH' : 'QUALITY GATE DEMO'}</span><strong>{workspaceData ? `${workspaceData.tasks.filter((task) => task.status === 'completed').length}/${workspaceData.tasks.length}` : '8/9'}</strong><p>{workspaceData?.job ? `Job ${workspaceData.job.status}` : 'Nessun runner collegato'}</p></div>{(workspaceData?.tasks ?? ['Typecheck','Build','Unit test','API smoke','A11y base']).map((item,index) => { const task = typeof item === 'string' ? null : item; const label = typeof item === 'string' ? item : item.title; const passed = task ? task.status === 'completed' : index < 4; return <div key={task?.id ?? label}><span className={passed?'pass':'pending'}>{passed?'✓':'◷'}</span><p><strong>{label}</strong><small>{task ? `${task.status.toUpperCase()} · fase ${task.phase}` : passed ? 'DEMO' : 'In attesa'}</small></p></div>; })}</div>}
               {rightTab === 'deploy' && <div className="deploy-panel"><span className="section-label">AMBIENTI</span><div><i className="stage-dot"/><p><strong>Staging</strong><small>Pronto per una preview verificata</small></p><button>Prepara</button></div><div className="locked"><i>◇</i><p><strong>Produzione</strong><small>Richiede approvazione esplicita</small></p></div><p className="honesty-note">Nessun provider è collegato in questa demo. Il pulsante non pubblica dati reali.</p></div>}
             </aside>

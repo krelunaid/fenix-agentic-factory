@@ -17,18 +17,18 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 10 - Repo index e patch | PARTIAL | Indice persistente, normalizzazione path, scope/freeze/precondition policy con test; applicatore patch sandbox da collegare |
 | 11 - QA ed evidence | PARTIAL | Registry artifact, quality run, evidence fail-closed e defect lifecycle; runner browser/a11y esterno da collegare |
 | 12 - Recovery e fork | PARTIAL | Recovery graph, snapshot artifact contract e rollback planning; restore fisico provider da collegare |
-| 13 - AI Gateway e costi | PLANNED |  |
-| 14 - GitHub | PLANNED |  |
-| 15 - Deploy e domini | PARTIAL | Gate UI, nessun provider collegato |
-| 16 - Integrazioni | PLANNED |  |
-| 17 - Mobile Expo | PLANNED |  |
-| 18 - Billing | PLANNED |  |
-| 19 - Voce | PLANNED |  |
-| 20 - Agent Studio | PLANNED |  |
-| 21 - MCP | PLANNED |  |
-| 22 - Team | PLANNED |  |
-| 23 - Visual select | PLANNED |  |
-| 24 - Hardening | PLANNED |  |
+| 13 - AI Gateway e costi | PARTIAL | Catalogo, capability routing, stima/fallback, credential reference e call ledger; provider inference non collegato |
+| 14 - GitHub | PARTIAL | Source connection, sync/conflict records, no-force/secret policy e PR evidence summary; GitHub App/OAuth non configurata |
+| 15 - Deploy e domini | PARTIAL | Release artifact, quality/smoke/approval gate, rollback target, deployment/domain records; provider esterno non collegato |
+| 16 - Integrazioni | PARTIAL | Manifest connection, secret reference, revoke, redaction, idempotency e approval policy; adapter esterni non configurati |
+| 17 - Mobile Expo | PARTIAL | Mobile profile, native compatibility/permission policy e build records; EAS/native builder non collegato |
+| 18 - Billing | PARTIAL | Account/subscription/credit ledger, idempotenza, hard cap e reconciliation policy; payment provider non collegato |
+| 19 - Voce | PARTIAL | Sessioni, it/en, retention opt-in, ambiguity/risk confirmation e text fallback; STT/TTS streaming non collegato |
+| 20 - Agent Studio | PARTIAL | Profili/versioni, tool/knowledge/memory/guardrail contract, run trace/cost; worker AI non collegato |
+| 21 - MCP | PARTIAL | Connection registry, permission/rate-limit/output policy e revoca; OAuth server e transport non distribuiti |
+| 22 - Team | PARTIAL | Project members, ruoli, commenti/resolve e notifiche schema; delivery notifiche e multi-approval avanzato da collegare |
+| 23 - Visual select | PARTIAL | DOM/source selection record, freeze policy, crop artifact e design token validation; browser mapping/diff runner non collegato |
+| 24 - Hardening | PARTIAL | Operations API, provider health/backup/certification schema, SLO e runbook; C1-C15 x3 e load/restore reali non eseguiti |
 
 ## Evidence della slice
 
@@ -36,11 +36,14 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Build di produzione: PASS.
 - Lint: PASS, zero problemi.
 - Metadata social: asset 1200 x 630 verificato.
-- Migrazioni D1: 24 tabelle, indici e foreign key generate e ispezionate.
+- Migrazioni D1: 52 tabelle, indici e foreign key generate e ispezionate.
 - Orchestratore: transizioni condizionali, human gate, task claim e result contract verificati da typecheck/build.
-- Build Plane kernel: 6 test su sandbox scope, repository index, patch policy, scaffold DAG, quality gate e recovery graph.
+- Kernel di policy: 15 test su Build Plane, AI routing, integrazioni, source/deploy, mobile, billing, voce, agenti, MCP, RBAC, visual mapping e certification.
 - Sandbox Worker: typecheck PASS; nessuna esecuzione dichiarata perché il provider non è ancora distribuito/configurato.
+- Schema replay: 52 tabelle applicate in SQLite isolato, `foreign_key_check` con zero errori.
+- Supply-chain audit production: zero vulnerabilità note dopo aggiornamento Next.js 16.3.3.
+- Secret pattern scan repository: nessuna credenziale rilevata.
 
 ## Prossimo incremento consigliato
 
-Collegare storage artifact e runner sandbox distribuito, quindi integrare AI Gateway e cost ledger senza trasformare metriche dimostrative in dati operativi.
+Distribuire e configurare i provider esterni (sandbox/container, blob storage, AI, OAuth GitHub/MCP, deploy, mobile, payment e voice), quindi eseguire C1-C15 per tre run con evidence reali. Gli adapter restano dichiarati non operativi finché queste verifiche non passano.

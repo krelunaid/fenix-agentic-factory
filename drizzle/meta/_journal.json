@@ -22,6 +22,13 @@
       "when": 1787948158476,
       "tag": "0002_giant_human_robot",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1787949368329,
+      "tag": "0003_powerful_jackpot",
+      "breakpoints": true
     }
   ]
 }
