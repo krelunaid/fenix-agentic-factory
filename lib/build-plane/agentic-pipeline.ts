@@ -312,6 +312,17 @@ export function normalizeGeneratedFileContent(response: string, path: string) {
       .trim();
     if (!content) throw new Error(`agentic_file_empty:${path}`);
   }
+  if (path.endsWith('.js')) {
+    // Keep generated enhancements self-contained. Remote image/link literals
+    // become an inert data URL, while comments are removed so documentation
+    // links cannot trip the executable-network gate.
+    content = content
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[;{}\s])\/\/[^\n\r]*/gm, '$1')
+      .replace(/(['"`])https?:\/\/[^'"`\n\r]*\1/gi, (_match, quote: string) => `${quote}data:,${quote}`)
+      .trim();
+    if (!content) throw new Error(`agentic_file_empty:${path}`);
+  }
   if (path.endsWith('.js') && !content.includes('fenix:experience-ready')) {
     content += "\nwindow.parent?.postMessage({type:'fenix:experience-ready'},'*');";
   }

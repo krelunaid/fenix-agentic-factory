@@ -70,6 +70,20 @@ test('CSS normalization removes model-added remote resources before the strict g
   assert.doesNotThrow(() => parseAgenticPatchSet(candidate, createHybridFilePlan(brief), classifyBuildComplexity(brief)));
 });
 
+test('JavaScript normalization neutralizes remote literals without relaxing direct patch validation', () => {
+  const raw = `/* see https://docs.example */
+const image = "https://images.example/plant.png";
+document.body.dataset.image = image; // https://comment.example
+window.parent?.postMessage({type:'fenix:experience-ready'},'*');`;
+  const normalized = normalizeGeneratedFileContent(raw, 'public/experience.js');
+  assert.doesNotMatch(normalized, /https?:\/\//);
+  assert.match(normalized, /const image = "data:,"/);
+  const candidate = validCandidate();
+  candidate.patches[1].content = normalized;
+  const brief = inferProductBrief('Piante', 'App per curare piante');
+  assert.doesNotThrow(() => parseAgenticPatchSet(candidate, createHybridFilePlan(brief), classifyBuildComplexity(brief)));
+});
+
 test('sanitize gate rejects traversal, external code, secrets and unsafe execution', () => {
   const brief = inferProductBrief('Piante', 'App per curare piante');
   const plan = createHybridFilePlan(brief);
