@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import test from 'node:test';
-import { generateAgenticApplication, inferProductBrief } from '../lib/build-plane/agentic-generator';
-import { buildDurablePreviewHtml, decodePreviewBundle } from '../lib/build-plane/durable-preview';
+import { buildSeedRows, generateAgenticApplication, inferProductBrief } from '../lib/build-plane/agentic-generator';
+import { buildDurablePreviewHtml, decodePreviewBundle, refreshPreviewBundle } from '../lib/build-plane/durable-preview';
 
 async function materialize(description: string) {
   const brief = inferProductBrief('Black-box build', description);
@@ -179,4 +179,36 @@ test('personal purchase prompts create a shopping experience, not a generic dash
   assert.equal(brief.appType, 'shopping');
   assert.match(html, /Lista acquisti/);
   assert.match(html, /Budget sotto controllo/);
+});
+
+test('plant prompts create a polished plant-care application', () => {
+  const brief = inferProductBrief('mi crei un app di piante', 'Applicazione full-stack: mi crei un app di piante');
+  const files = generateAgenticApplication(brief);
+  const html = files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  const css = files.find((file) => file.path === 'public/styles.css')?.content ?? '';
+  const rows = buildSeedRows(brief);
+  assert.equal(brief.appType, 'plants');
+  assert.equal(brief.productName, 'VerdeVivo');
+  assert.equal(brief.entity.plural, 'Piante');
+  assert.match(html, /Cura delle piante/);
+  assert.match(html, /Annaffiatura oggi/);
+  assert.match(html, /Monstera Alba/);
+  assert.match(html, /Nuova pianta/);
+  assert.doesNotMatch(html, /Nuovo elemento/);
+  assert.match(css, /\.plant-grid/);
+  assert.equal(rows[0]?.name, 'Monstera Alba');
+});
+
+test('existing generic preview bundles are upgraded from the project request', () => {
+  const generic = inferProductBrief('Nuovo progetto', 'Applicazione generica');
+  const bundle = { productBrief: generic, files: generateAgenticApplication(generic) };
+  const refreshed = refreshPreviewBundle(bundle, {
+    name: 'mi crei un app di piante',
+    description: 'Applicazione full-stack: mi crei un app di piante',
+  });
+  const html = refreshed.files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  assert.equal(refreshed.productBrief.appType, 'plants');
+  assert.equal(refreshed.productBrief.entity.fields[0]?.key, 'name');
+  assert.match(html, /Le mie piante/);
+  assert.doesNotMatch(html, /Alpha/);
 });

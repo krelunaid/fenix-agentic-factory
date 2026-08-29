@@ -1,12 +1,13 @@
 import { env } from 'cloudflare:workers';
 import { buildSeedRows, type ProductBrief } from '../../../lib/build-plane/agentic-generator';
-import { buildDurablePreviewHtml, decodePreviewBundle } from '../../../lib/build-plane/durable-preview';
+import { buildDurablePreviewHtml, decodePreviewBundle, refreshPreviewBundle } from '../../../lib/build-plane/durable-preview';
 import { requireProjectAccess } from '../../../lib/core-access';
 import { ensureCoreSchema } from '../../../db';
 
 export const dynamic = 'force-dynamic';
 
 type BundleRow = { id: string; base64_data: string };
+type ProjectRow = { name: string; description: string };
 
 const corsHeaders = {
   'access-control-allow-origin': 'null',
@@ -26,6 +27,14 @@ async function latestBundle(projectId: string) {
   ).bind(projectId).first<BundleRow>();
 }
 
+async function effectiveBundle(projectId: string, row: BundleRow) {
+  const project = await env.DB.prepare(
+    'SELECT name,description FROM projects WHERE id=? LIMIT 1',
+  ).bind(projectId).first<ProjectRow>();
+  const decoded = decodePreviewBundle(row.base64_data);
+  return project ? refreshPreviewBundle(decoded, project) : decoded;
+}
+
 async function previewToken(projectId: string, artifactId: string) {
   const secret = env.SANDBOX_CONTROL_TOKEN || env.AI_CONTROL_TOKEN;
   if (!secret) throw new Error('preview_signing_unavailable');
@@ -43,23 +52,31 @@ async function authorizeApi(request: Request, projectId: string) {
   if (!bundle) return null;
   const expected = await previewToken(projectId, bundle.id);
   const supplied = new URL(request.url).searchParams.get('token');
-  return supplied === expected ? { row: bundle, bundle: decodePreviewBundle(bundle.base64_data) } : null;
+  return supplied === expected ? { row: bundle, bundle: await effectiveBundle(projectId, bundle) } : null;
 }
 
 async function ensureSeed(projectId: string, brief: ProductBrief) {
   await ensureCoreSchema();
-  const count = await env.DB.prepare(
-    'SELECT COUNT(*) AS count FROM prototype_records WHERE project_id=?',
-  ).bind(projectId).first<{ count: number }>();
-  if ((count?.count ?? 0) > 0) return;
+  const existing = await env.DB.prepare(
+    'SELECT payload_json FROM prototype_records WHERE project_id=? LIMIT 1',
+  ).bind(projectId).first<{ payload_json: string }>();
+  let schemaMatches = false;
+  if (existing) {
+    try {
+      const payload = JSON.parse(existing.payload_json) as Record<string, unknown>;
+      schemaMatches = brief.entity.fields.every((field) => field.key in payload);
+    } catch {}
+  }
+  if (schemaMatches) return;
   const now = Date.now();
-  await env.DB.batch(
-    buildSeedRows(brief).map((payload) =>
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM prototype_records WHERE project_id=?').bind(projectId),
+    ...buildSeedRows(brief).map((payload) =>
       env.DB.prepare(
         'INSERT INTO prototype_records (id,project_id,payload_json,created_at,updated_at) VALUES (?,?,?,?,?)',
       ).bind(crypto.randomUUID(), projectId, JSON.stringify(payload), now, now),
     ),
-  );
+  ]);
 }
 
 async function handleApi(request: Request, projectId: string) {
@@ -135,7 +152,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   if (!row) return new Response('La preview permanente non è ancora pronta.', { status: 425 });
   const token = await previewToken(id, row.id);
   const endpoint = `/preview/${encodeURIComponent(id)}?token=${token}`;
-  const html = buildDurablePreviewHtml(decodePreviewBundle(row.base64_data), endpoint);
+  const html = buildDurablePreviewHtml(await effectiveBundle(id, row), endpoint);
   return new Response(html, {
     headers: {
       'content-type': 'text/html; charset=utf-8',

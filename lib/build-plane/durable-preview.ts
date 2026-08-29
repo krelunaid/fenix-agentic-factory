@@ -1,4 +1,9 @@
-import type { GeneratedFile, ProductBrief } from './agentic-generator';
+import {
+  generateAgenticApplication,
+  inferProductBrief,
+  type GeneratedFile,
+  type ProductBrief,
+} from './agentic-generator';
 
 export type PreviewBundle = {
   files: GeneratedFile[];
@@ -27,6 +32,24 @@ export function decodePreviewBundle(base64: string): PreviewBundle {
     throw new Error('preview_html_missing');
   }
   return { files, productBrief: payload.productBrief };
+}
+
+export function refreshPreviewBundle(
+  bundle: PreviewBundle,
+  project: { name: string; description: string },
+) {
+  const productBrief = inferProductBrief(
+    project.name,
+    project.description,
+    bundle.productBrief,
+  );
+  if (JSON.stringify(productBrief) === JSON.stringify(bundle.productBrief)) {
+    return bundle;
+  }
+  return {
+    productBrief,
+    files: generateAgenticApplication(productBrief),
+  } satisfies PreviewBundle;
 }
 
 function escapeInline(value: string, closingTag: 'script' | 'style') {
