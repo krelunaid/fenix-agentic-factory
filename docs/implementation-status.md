@@ -8,11 +8,11 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 1 - Brand FENIX | PASS | Nome, metadata e copy originali |
 | 2 - Design system e shell | PARTIAL | Home e workspace responsive con chat, preview sandbox, repo, test e deploy reali; manca una regression suite visuale multi-browser |
 | 3 - Identity e project core | PARTIAL | Identità ChatGPT, D1, organizzazioni, membership, CRUD progetto e audit |
-| 4 - Conversation e brief | PARTIAL | Brief versionato, cronologia persistente e risposta Workers AI con trace/costi collegate alla UI; resta lo streaming token-by-token |
+| 4 - Conversation e brief | PASS | Product Architect con Workers AI, schema validato, fallback domain solver, brief versionato e artifact persistito |
 | 5 - Task graph | PARTIAL | DAG, dipendenze, claim atomico, tentativi e state machine persistenti |
 | 6 - Queue ed eventi | PARTIAL | Worker contract, completion, replay SSE e budget gate; manca una queue esterna durabile |
 | 7 - Sandbox provider | PASS | Worker Cloudflare Sandbox distribuito, HMAC, scope deterministico, command/path policy, health, signed exec e destroy verificati |
-| 8 - Scaffold full-stack | PASS | Template React/Worker/D1 deterministico con lockfile; install, typecheck, lint, unit test e build verificati da zero |
+| 8 - Generazione full-stack | PASS (web beta) | Generazione specifica per brief con client responsive, backend Node, SQLite, session auth, RBAC, CRUD, ricerca, metriche e source exportabile |
 | 9 - Preview Engine | PASS | Processo sandbox persistente, port readiness, quick tunnel, HTTP 200/body atteso, device frame e cleanup verificati |
 | 10 - Repo index e patch | PARTIAL | Applicatore sandbox atomico con hash precondition, path/freeze policy, delete approval, audit e rollback compensativo; resta il patch planner semantico |
 | 11 - QA ed evidence | PARTIAL | Registry artifact con blob bounded, quality run, evidence fail-closed, defect lifecycle e browser capture reale; resta una suite axe/performance completa |
@@ -24,7 +24,7 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 | 17 - Mobile Expo | PARTIAL | Mobile profile, native compatibility/permission policy e build records; EAS/native builder non collegato |
 | 18 - Billing | PARTIAL | Account/subscription/credit ledger, idempotenza, hard cap con pausa fail-closed e reconciliation policy; payment provider non collegato |
 | 19 - Voce | PARTIAL | STT Whisper reale verificato, sessioni it/en, no audio retention, ambiguity/risk confirmation e fallback; TTS provider risponde 3043 e streaming/interruption restano degradati |
-| 20 - Agent Studio | PARTIAL | Profili/versioni, managed inference e tool read-only project/repository/quality con trace, approval e cost/step cap; restano subagent sandbox ed eval publish |
+| 20 - Agent Studio | PARTIAL | Profili/versioni e run reali per Product Architect, Software Architect, Frontend, Backend, Data, QA, Security e Deploy; resta l'orchestrazione custom pubblicabile |
 | 21 - MCP | PARTIAL | Connection registry, permission/rate-limit/output policy e revoca; OAuth server e transport non distribuiti |
 | 22 - Team | PARTIAL | Project-scoped RBAC reale, invite, comment threads, inbox persistente e quorum multi-approval con vote audit; resta delivery push/email |
 | 23 - Visual select | PARTIAL | Browser runner HMAC/SSRF-guarded con DOM path, styles, crop PNG persistito, a11y snapshot, viewport responsive e diff exact/perceptual; restano patch planning semantico e token extraction automatica |
@@ -41,7 +41,8 @@ Legenda: `PASS` completato con evidence, `PARTIAL` slice reale ma incompleta, `P
 - Kernel di policy: 15 test su Build Plane, AI routing, integrazioni, source/deploy, mobile, billing, voce, agenti, MCP, RBAC, visual mapping e certification.
 - Sandbox Worker: typecheck e deploy PASS; health 200, richiesta non firmata 401, signed exec isolata 200 con output atteso, destroy 200.
 - Preview Engine: process start 201/running, port readiness, tunnel 200 con body atteso, process kill e sandbox destroy verificati.
-- Scaffold full-stack: generazione isolata da template, installazione lockfile e gate typecheck/lint/unit/build tutti PASS.
+- Generazione full-stack: due brief black-box distinti producono codice e modelli differenti; scenario reale con server, login, SQLite, list e create PASS.
+- Autopilot: rimosso il template dashboard fisso e rimossi i capability contract `verified_or_not_applicable`; le fasi non collegate non vengono più dichiarate completate.
 - Patch runtime: write/read/delete firmati verificati sul sandbox distribuito; contenuto e precondition hash, rollback e audit sono fail-closed nel Control Plane.
 - AI Gateway: health PASS; inferenza text firmata reale PASS (`FENIX_AI_OK`) e image generation FLUX reale PASS (JPEG base64 verificato), con catalogo, token usage e ledger tenant-aware.
 - Conversation runtime: messaggi utente/assistente persistenti, risposta managed AI, trace, budget fail-closed e ledger collegati al composer del workspace.

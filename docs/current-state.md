@@ -1,6 +1,6 @@
 # Stato corrente
 
-Data audit: 28 agosto 2026
+Data audit: 29 agosto 2026
 
 ## Repository
 
@@ -20,11 +20,11 @@ Progetto greenfield separato. Non deriva né modifica repository preesistenti. S
 | Queue e worker | Partial | Job/task D1, claim atomico, tentativi e completion; queue esterna non collegata |
 | Sandbox | Operativo | Worker Cloudflare separato, HMAC, scope, allowlist, path policy; signed exec e destroy verificati |
 | Preview runtime | Operativo | Processo persistente, port readiness, quick tunnel HTTP e cleanup verificati |
-| Scaffold | Partial | Template web TypeScript con React, Worker, D1, health check e quality DAG |
+| Generazione web | Operativa (beta) | Brief AI validato, fallback deterministico, codice specifico per dominio, Node HTTP, SQLite, sessioni, RBAC, CRUD, ricerca, metriche e preview |
 | Repo, QA e recovery | Partial | Indice, patch policy, artifact/evidence/defect registry e recovery graph con test kernel |
 | Platform Plane | Partial | AI routing, provider connections, source sync, release/domain, mobile, billing, voice, agents, MCP, collaboration e visual records |
 | Hardening | Partial | Operations API, SLO, runbook e certification matrix fail-closed |
-| AI Gateway | Non implementato | Nessun provider o segreto |
+| AI Gateway | Operativo | Workers AI firmato per il Product Architect; output validato prima della generazione |
 | GitHub, deploy e billing | Non implementato | Nessun account o side effect esterno |
 
 ## Comandi verificati
@@ -42,6 +42,6 @@ Progetto greenfield separato. Non deriva né modifica repository preesistenti. S
 ## Rischi immediati
 
 - Collaboration UI e inviti non sono ancora implementati, benché lo schema sia tenant-aware.
-- La home usa contatori reali D1; mockup preview e file tree sono marcati come dimostrativi.
+- La generazione automatica certificata copre oggi applicazioni web CRUD; mobile nativo, GitHub OAuth, deploy provider, domini, pagamenti e MCP remoto non sono inclusi nel job automatico.
 - Prima di accettare codice o file utente in produzione servono deploy del sandbox, egress deny-by-default, blob storage e scansione upload.
-- C1-C15 non sono certificati: nessun risultato viene marcato PASS senza artifact scoped.
+- C1-C15 non sono certificati: il vecchio PASS sintetico C1 è stato rimosso e nessun risultato viene marcato PASS senza esecuzione reale.

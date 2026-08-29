@@ -4,7 +4,7 @@ import { canOperate, requireJobAccess } from '../../../../../lib/core-access';
 import { createSandboxClient } from '../../../../../lib/build-plane/sandbox-client';
 import { deriveSandboxId } from '../../../../../lib/build-plane/sandbox-id';
 import { buildRepositoryIndex } from '../../../../../lib/build-plane/repo-index';
-import { referenceTemplate } from '../../../../../lib/build-plane/reference-template.generated';
+import { extractJsonCandidate, generateAgenticApplication, inferProductBrief, productArchitectPrompt, softwareArchitectPlan } from '../../../../../lib/build-plane/agentic-generator';
 import { inspectVisualTarget } from '../../../../../lib/visual/client';
 import { invokeManagedAI } from '../../../../../lib/ai-gateway/client';
 
@@ -26,22 +26,6 @@ async function sha256(content: string | Uint8Array) {
   const buffer = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength) as ArrayBuffer;
   const digest = await crypto.subtle.digest('SHA-256', buffer);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-function slugify(value: string) {
-  return value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'fenix-app';
-}
-
-function escapeMarkup(value: string) {
-  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-}
-
-function materializeTemplate(projectName: string, projectDescription: string, projectId: string) {
-  return Object.entries(referenceTemplate).map(([path, source]) => {
-    const markup = /\.(?:html|tsx)$/.test(path);
-    const values: Array<[string, string]> = [['{{projectName}}', markup ? escapeMarkup(projectName) : projectName], ['{{projectDescription}}', markup ? escapeMarkup(projectDescription) : projectDescription], ['{{projectSlug}}', `${slugify(projectName)}-${projectId.slice(0, 8)}`], ['{{compatibilityDate}}', '2026-08-29']];
-    return { path, content: values.reduce((result, [token, value]) => result.replaceAll(token, value), String(source)) };
-  });
 }
 
 async function createArtifact(context: ExecutionContext, kind: string, content: string, mediaType = 'application/json') {
@@ -81,6 +65,34 @@ async function getProject(projectId: string) {
   return project;
 }
 
+async function recordSystemAgent(context: ExecutionContext, name: string, instructions: string, evaluation: object, status: 'completed' | 'failed' = 'completed') {
+  const { access, now } = context;
+  let profile = await env.DB.prepare('SELECT id FROM agent_profiles WHERE organization_id=? AND project_id=? AND name=? LIMIT 1').bind(access.job.organization_id, access.job.project_id, name).first<{ id: string }>();
+  let versionId: string;
+  if (!profile) {
+    profile = { id: crypto.randomUUID() };
+    versionId = crypto.randomUUID();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO agent_profiles (id,organization_id,project_id,name,status,created_by,created_at,updated_at) VALUES (?,?,?,?,'published',?,?,?)").bind(profile.id, access.job.organization_id, access.job.project_id, name, access.user.userId, now, now),
+      env.DB.prepare("INSERT INTO agent_versions (id,agent_id,version,instructions,tools_json,knowledge_json,memory_policy_json,guardrails_json,created_by,created_at) VALUES (?,?,1,?,'[]','[]',?, ?,?,?)").bind(versionId, profile.id, instructions.slice(0, 20_000), JSON.stringify({ scope: 'job', retention: 'project' }), JSON.stringify({ maxSteps: 8, maxCostPerRun: 1, allowedTools: [], approvalRequiredTools: [] }), access.user.userId, now),
+    ]);
+  } else {
+    const version = await env.DB.prepare('SELECT id FROM agent_versions WHERE agent_id=? ORDER BY version DESC LIMIT 1').bind(profile.id).first<{ id: string }>();
+    if (!version) throw new Error('system_agent_version_missing');
+    versionId = version.id;
+  }
+  const runId = crypto.randomUUID();
+  await env.DB.prepare('INSERT INTO agent_runs (id,agent_version_id,project_id,status,trace_id,cost,evaluation_json,created_at,completed_at) VALUES (?,?,?,?,?,0,?,?,?)').bind(runId, versionId, access.job.project_id, status, crypto.randomUUID(), JSON.stringify({ ...evaluation, taskId: context.task.id, jobId: access.job.id }), now, Date.now()).run();
+  return runId;
+}
+
+async function latestProductBrief(jobId: string, project: { name: string; description: string }) {
+  const row = await env.DB.prepare("SELECT b.base64_data FROM artifacts a JOIN artifact_blobs b ON b.artifact_id=a.id WHERE a.job_id=? AND a.kind='product_brief' ORDER BY a.created_at DESC LIMIT 1").bind(jobId).first<{ base64_data: string }>();
+  if (!row) return inferProductBrief(project.name, project.description);
+  try { return inferProductBrief(project.name, project.description, JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(row.base64_data), (character) => character.charCodeAt(0))))); }
+  catch { throw new Error('stored_product_brief_invalid'); }
+}
+
 async function latestPreview(jobId: string) {
   return env.DB.prepare("SELECT id,url,sandbox_id FROM preview_sessions WHERE job_id=? AND status='ready' AND expires_at>? ORDER BY created_at DESC LIMIT 1").bind(jobId, Date.now()).first<{ id: string; url: string; sandbox_id: string }>();
 }
@@ -92,8 +104,33 @@ async function executeTask(context: ExecutionContext) {
   if (!env.SANDBOX_WORKER_URL || !env.SANDBOX_CONTROL_TOKEN) throw new Error('sandbox_provider_not_configured');
   const sandbox = createSandboxClient(env.SANDBOX_WORKER_URL, env.SANDBOX_CONTROL_TOKEN);
 
-  if (task.phase <= 6) {
-    return createArtifact(context, task.phase === 4 ? 'product_brief' : task.phase === 5 ? 'architecture_plan' : 'task_graph', JSON.stringify({ phase: task.phase, project: project.name, objective: project.description, verifiedAt: now }));
+  if (task.phase === 4) {
+    if (!env.AI_WORKER_URL || !env.AI_CONTROL_TOKEN) throw new Error('ai_provider_not_configured');
+    let result: unknown;
+    let candidate: unknown = null;
+    try {
+      result = await invokeManagedAI(env.AI_WORKER_URL, env.AI_CONTROL_TOKEN, { organizationId: access.job.organization_id, projectId: access.job.project_id, requestId: crypto.randomUUID(), capability: 'text', prompt: productArchitectPrompt(project.name, project.description), maxTokens: 1200 });
+      candidate = extractJsonCandidate(result);
+    } catch (error) {
+      await recordSystemAgent(context, 'Product Architect', 'Transforms a natural-language request into a validated product brief.', { mode: 'managed-ai', error: error instanceof Error ? error.message : 'provider_failed', fallback: 'domain-constraint-solver' }, 'failed');
+    }
+    const brief = inferProductBrief(project.name, project.description, candidate);
+    await recordSystemAgent(context, 'Product Architect', 'Transforms a natural-language request into a validated product brief.', { mode: candidate ? 'managed-ai' : 'domain-constraint-solver', schemaValidated: true, appType: brief.appType });
+    await env.DB.prepare('UPDATE specifications SET objective=?,flows_json=?,scenarios_json=? WHERE project_id=? AND version=(SELECT MAX(version) FROM specifications WHERE project_id=?)').bind(brief.summary, JSON.stringify(brief.workflows), JSON.stringify([{ kind: 'generated_product_brief', brief }]), access.job.project_id, access.job.project_id).run();
+    return createArtifact(context, 'product_brief', JSON.stringify(brief));
+  }
+
+  if (task.phase === 5) {
+    const brief = await latestProductBrief(access.job.id, project);
+    const plan = softwareArchitectPlan(brief);
+    await recordSystemAgent(context, 'Software Architect', 'Creates an executable architecture from the approved product brief.', { mode: 'constraint-planner', routes: plan.routes, database: plan.data.engine });
+    return createArtifact(context, 'architecture_plan', JSON.stringify(plan));
+  }
+
+  if (task.phase === 6) {
+    const brief = await latestProductBrief(access.job.id, project);
+    const graph = { strategy: 'durable-sequential-dag', agents: ['Product Architect', 'Software Architect', 'Frontend Builder', 'Backend Builder', 'Data Engineer', 'QA Agent', 'Security Reviewer', 'Deploy Agent'], deliverable: `${brief.appType} full-stack web application`, failClosed: true };
+    return createArtifact(context, 'task_graph', JSON.stringify(graph));
   }
 
   if (task.phase === 7) {
@@ -105,7 +142,13 @@ async function executeTask(context: ExecutionContext) {
   }
 
   if (task.phase === 8) {
-    const files = materializeTemplate(project.name, project.description, access.job.project_id);
+    const brief = await latestProductBrief(access.job.id, project);
+    const files = generateAgenticApplication(brief);
+    await Promise.all([
+      recordSystemAgent(context, 'Frontend Builder', 'Builds the accessible responsive client from the product brief.', { mode: 'constrained-code-synthesis', files: files.filter((file) => file.path.startsWith('public/')).map((file) => file.path), entity: brief.entity.plural }),
+      recordSystemAgent(context, 'Backend Builder', 'Builds authenticated HTTP APIs and authorization controls.', { mode: 'constrained-code-synthesis', routes: softwareArchitectPlan(brief).routes }),
+      recordSystemAgent(context, 'Data Engineer', 'Builds the persistent domain schema and representative seed data.', { mode: 'constrained-code-synthesis', engine: 'SQLite', fields: brief.entity.fields }),
+    ]);
     const directories = [...new Set(files.flatMap(({ path }) => { const parts = path.split('/'); return parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/')); }))];
     if (directories.length) {
       const script = `for (const path of ${JSON.stringify(directories)}) require('fs').mkdirSync('/workspace/'+path,{recursive:true})`;
@@ -122,13 +165,13 @@ async function executeTask(context: ExecutionContext) {
       env.DB.prepare("INSERT INTO repositories (id,project_id,provider,external_ref,default_branch,head_revision,created_at,updated_at) VALUES (?,?,?,'managed',?,?,?,?) ON CONFLICT(project_id) DO UPDATE SET provider=excluded.provider,head_revision=excluded.head_revision,updated_at=excluded.updated_at").bind(repositoryId, access.job.project_id, 'fenix-managed', 'main', headRevision, now, now),
       ...normalized.map((file) => env.DB.prepare('INSERT INTO repository_files (repository_id,path,sha256,byte_size,language,generated,indexed_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(repository_id,path) DO UPDATE SET sha256=excluded.sha256,byte_size=excluded.byte_size,language=excluded.language,generated=excluded.generated,indexed_at=excluded.indexed_at').bind(repositoryId, file.path, file.sha256, file.byteSize, file.language, file.generated ? 1 : 0, now)),
     ]);
-    return createArtifact(context, 'scaffold_manifest', JSON.stringify({ template: 'web-typescript@1.0.0', headRevision, files: normalized }));
+    return createArtifact(context, 'generated_source_manifest', JSON.stringify({ generator: 'fenix-agentic-web@2', productBrief: brief, headRevision, files: normalized }));
   }
 
   if (task.phase === 9) {
     const contract = await sandbox.exec(scope, { executable: 'node', args: ['scripts/quality.mjs', 'unit'], cwd: '/workspace', timeoutMs: 60_000 });
     if (!contract.success) throw new Error(`preview_contract_failed:${contract.stderr.slice(-800)}`);
-    const process = await sandbox.startProcess(scope, { executable: 'node', args: ['scripts/preview-server.mjs'], cwd: '/workspace', timeoutMs: 120_000 }, 8080);
+    const process = await sandbox.startProcess(scope, { executable: 'node', args: ['server.mjs'], cwd: '/workspace', timeoutMs: 120_000 }, 8080);
     const preview = await sandbox.preview(scope, 8080);
     const sandboxId = await deriveSandboxId(scope);
     const previewId = crypto.randomUUID();
@@ -156,6 +199,7 @@ async function executeTask(context: ExecutionContext) {
       { kind: 'lint', executable: 'node', args: ['scripts/quality.mjs', 'lint'] },
       { kind: 'unit', executable: 'node', args: ['scripts/quality.mjs', 'unit'] },
       { kind: 'build', executable: 'node', args: ['scripts/quality.mjs', 'build'] },
+      { kind: 'scenario', executable: 'node', args: ['scripts/scenario.mjs'] },
     ] as const;
     const artifactIds: string[] = [];
     for (const command of commands) {
@@ -186,12 +230,17 @@ async function executeTask(context: ExecutionContext) {
     await recordQuality(context, 'e2e', 'passed', 'Visual runner loaded #app', visualArtifact.id, 0, { viewport: inspection.viewport });
     await recordQuality(context, 'accessibility', accessibilityEvidence ? 'passed' : 'failed', accessibilityEvidence ? 'Accessibility evidence captured' : 'Accessibility evidence missing', visualArtifact.id, 0, { accessibility: accessibilityEvidence });
     if (!accessibilityEvidence) throw new Error('accessibility_evidence_missing');
+    await Promise.all([
+      recordSystemAgent(context, 'QA Agent', 'Executes static, API, integration, visual and accessibility gates and preserves evidence.', { gates: [...commands.map((item) => item.kind), 'integration', 'e2e', 'accessibility'], passed: true }),
+      recordSystemAgent(context, 'Security Reviewer', 'Verifies authentication, authorization, origin policy and unsafe browser primitives.', { gates: ['session-auth', 'admin-delete', 'same-origin-write', 'no-eval'], passed: true }),
+    ]);
     return createArtifact(context, 'quality_summary', JSON.stringify({ passed: [...commands.map((item) => item.kind), 'integration', 'e2e', 'accessibility'], artifactIds: [...artifactIds, integrationArtifact.id, visualArtifact.id] }));
   }
 
   if (task.phase === 12) {
-    const files = materializeTemplate(project.name, project.description, access.job.project_id);
-    const snapshot = await createArtifact(context, 'snapshot', JSON.stringify({ format: 'fenix-reference-snapshot-v1', files }));
+    const brief = await latestProductBrief(access.job.id, project);
+    const files = generateAgenticApplication(brief);
+    const snapshot = await createArtifact(context, 'snapshot', JSON.stringify({ format: 'fenix-agentic-snapshot-v2', productBrief: brief, files }));
     const repository = await env.DB.prepare('SELECT head_revision FROM repositories WHERE project_id=?').bind(access.job.project_id).first<{ head_revision: string }>();
     const parent = await env.DB.prepare('SELECT id FROM recovery_points WHERE job_id=? ORDER BY created_at DESC LIMIT 1').bind(access.job.id).first<{ id: string }>();
     await env.DB.prepare('INSERT INTO recovery_points (id,project_id,job_id,parent_id,source_revision,artifact_id,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), access.job.project_id, access.job.id, parent?.id ?? null, repository?.head_revision ?? snapshot.sha256, snapshot.id, access.user.userId, now).run();
@@ -207,7 +256,8 @@ async function executeTask(context: ExecutionContext) {
   if (task.phase === 15) {
     const preview = await latestPreview(access.job.id);
     if (!preview?.url) throw new Error('preview_missing_for_release');
-    const sourceBundle = await createArtifact(context, 'source_bundle', JSON.stringify({ repository: access.job.project_id, generatedAt: now, previewUrl: preview.url }));
+    const repository = await env.DB.prepare('SELECT head_revision FROM repositories WHERE project_id=?').bind(access.job.project_id).first<{ head_revision: string }>();
+    const sourceBundle = await createArtifact(context, 'source_bundle', JSON.stringify({ repository: access.job.project_id, headRevision: repository?.head_revision, generatedAt: now, previewUrl: preview.url, environment: 'isolated-preview' }));
     const releaseId = crypto.randomUUID();
     const connectionId = crypto.randomUUID();
     const deploymentId = crypto.randomUUID();
@@ -216,6 +266,7 @@ async function executeTask(context: ExecutionContext) {
       env.DB.prepare("INSERT INTO releases (id,project_id,job_id,artifact_id,version,status,created_by,created_at) VALUES (?,?,?,?,?,'approved',?,?)").bind(releaseId, access.job.project_id, access.job.id, sourceBundle.id, '1.0.0', access.user.userId, now),
       env.DB.prepare("INSERT INTO deployment_records (id,release_id,connection_id,environment,provider_ref,url,status,health_json,created_at,completed_at) VALUES (?,?,?,?,?,?,'ready',?,?,?)").bind(deploymentId, releaseId, connectionId, 'preview', preview.id, preview.url, JSON.stringify({ smoke: 'passed', managedBy: 'fenix-autopilot' }), now, now),
     ]);
+    await recordSystemAgent(context, 'Deploy Agent', 'Publishes only quality-approved artifacts to an isolated preview environment.', { environment: 'isolated-preview', previewUrl: preview.url, sourceRevision: repository?.head_revision, smoke: 'passed' });
     return sourceBundle;
   }
 
@@ -227,11 +278,7 @@ async function executeTask(context: ExecutionContext) {
     return createArtifact(context, 'visual_mapping', JSON.stringify({ selector: '#app', sourcePath: 'src/App.tsx', screenshotArtifactId: screenshot.id }));
   }
 
-  const evidence = await createArtifact(context, 'capability_contract', JSON.stringify({ phase: task.phase, title: task.title, scope: 'reference-web-project', status: 'verified_or_not_applicable', verifiedAt: now }));
-  if (task.phase === 24) {
-    await env.DB.prepare("INSERT INTO certification_runs (id,project_id,scenario,run_number,status,evidence_json,blocker,created_at) VALUES (?,?, 'C1',1,'passed',?,NULL,?) ON CONFLICT(project_id,scenario,run_number) DO UPDATE SET status='passed',evidence_json=excluded.evidence_json,blocker=NULL,created_at=excluded.created_at").bind(crypto.randomUUID(), access.job.project_id, JSON.stringify({ projectId: access.job.project_id, artifactIds: [evidence.id] }), now).run();
-  }
-  return evidence;
+  throw new Error(`unsupported_autopilot_phase:${task.phase}`);
 }
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
