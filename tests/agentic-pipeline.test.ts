@@ -56,6 +56,20 @@ test('single-file AI passes accept raw or fenced source without JSON escaping', 
   assert.throws(() => normalizeGeneratedFileContent('   ', 'public/experience.js'), /file_empty/);
 });
 
+test('CSS normalization removes model-added remote resources before the strict gate', () => {
+  const raw = `/* generated visual system; never use https://docs.example */
+@import url('https://fonts.example/inter.css');
+:root{--accent:#267052;background-image:url("https://images.example/leaf.png")}
+.domain-card{display:grid}`;
+  const normalized = normalizeGeneratedFileContent(raw, 'public/experience.css');
+  assert.doesNotMatch(normalized, /https?:\/\//);
+  assert.match(normalized, /\.domain-card\{display:grid\}/);
+  const candidate = validCandidate();
+  candidate.patches[0].content = normalized;
+  const brief = inferProductBrief('Piante', 'App per curare piante');
+  assert.doesNotThrow(() => parseAgenticPatchSet(candidate, createHybridFilePlan(brief), classifyBuildComplexity(brief)));
+});
+
 test('sanitize gate rejects traversal, external code, secrets and unsafe execution', () => {
   const brief = inferProductBrief('Piante', 'App per curare piante');
   const plan = createHybridFilePlan(brief);

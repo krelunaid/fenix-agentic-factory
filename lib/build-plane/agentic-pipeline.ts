@@ -301,6 +301,17 @@ export function normalizeGeneratedFileContent(response: string, path: string) {
     ?? response;
   let content = fenced.trim();
   if (!content) throw new Error(`agentic_file_empty:${path}`);
+  if (path.endsWith('.css')) {
+    // Small models occasionally add a font import or a remote background even
+    // when the contract forbids it. Remove those inertly before the strict gate
+    // instead of discarding an otherwise useful, local-only visual pass.
+    content = content
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/@import\s+(?:url\()?\s*['"]?https?:\/\/[^;]+;?/gi, '')
+      .replace(/[\w-]+\s*:\s*[^;{}]*https?:\/\/[^;{}]*;?/gi, '')
+      .trim();
+    if (!content) throw new Error(`agentic_file_empty:${path}`);
+  }
   if (path.endsWith('.js') && !content.includes('fenix:experience-ready')) {
     content += "\nwindow.parent?.postMessage({type:'fenix:experience-ready'},'*');";
   }
