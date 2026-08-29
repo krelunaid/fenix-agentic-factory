@@ -35,9 +35,10 @@ test('22 focus is visible',()=>assert.match(css,/:focus-visible/));
 test('23 reduced motion is supported',()=>assert.match(css,/prefers-reduced-motion/));
 test('24 design tokens are versioned',()=>assert.match(page,/save-tokens/));
 test('25 release remains gated',()=>assert.match(page,/Quality gate e ambienti aperti/));
-test('26 project completion is exposed as an explicit action',()=>assert.match(page,/Completa progetto/));
+test('26 project creation starts the verified build automatically',()=>['Crea e costruisci','await runAutopilot\\(d\\.jobId,d\\.project\\.id\\)'].forEach(pattern=>assert.match(page,new RegExp(pattern))));
 test('27 autopilot executes the sandbox scaffold and preview',()=>['writeFile','scripts/quality\\.mjs','scripts/preview-server\\.mjs','startProcess','sandbox\\.preview'].forEach(pattern=>assert.match(autopilot,new RegExp(pattern))));
 test('28 autopilot records all release quality gates',()=>['typecheck','lint','unit','build','integration','e2e','accessibility'].forEach(kind=>assert.match(autopilot,new RegExp(`['\"]${kind}['\"]`))));
+test('29 quick types never overwrite an existing brief',()=>assert.match(page,/current=>current\.trim\(\)\?current:/));
 
 test('black-box challenge covers ten distinct product structures',()=>{
   const briefs=challengeAppTypes.map(createChallengeBrief);

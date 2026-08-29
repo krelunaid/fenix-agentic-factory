@@ -106,5 +106,5 @@ export async function POST(request: Request) {
   ];
   await env.DB.batch(statements);
 
-  return NextResponse.json({ project: projectJson({ id: projectId, name, description: description || 'Nuovo progetto FENIX', status: 'Planning', progress: 8, tone: visualDirection, updated_at: now }) }, { status: 201 });
+  return NextResponse.json({ project: projectJson({ id: projectId, name, description: description || 'Nuovo progetto FENIX', status: 'Planning', progress: 8, tone: visualDirection, updated_at: now }), jobId }, { status: 201 });
 }
