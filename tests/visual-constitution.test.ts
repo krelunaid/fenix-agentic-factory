@@ -36,7 +36,7 @@ test('23 reduced motion is supported',()=>assert.match(css,/prefers-reduced-moti
 test('24 design tokens are versioned',()=>assert.match(page,/save-tokens/));
 test('25 release remains gated',()=>assert.match(page,/Quality gate e ambienti aperti/));
 test('26 project completion is exposed as an explicit action',()=>assert.match(page,/Completa progetto/));
-test('27 autopilot executes the sandbox scaffold and preview',()=>['writeFile','npm.*install','startProcess','sandbox\.preview'].forEach(pattern=>assert.match(autopilot,new RegExp(pattern))));
+test('27 autopilot executes the sandbox scaffold and preview',()=>['writeFile','corepack','startProcess','sandbox\.preview'].forEach(pattern=>assert.match(autopilot,new RegExp(pattern))));
 test('28 autopilot records all release quality gates',()=>['typecheck','lint','unit','build','integration','e2e','accessibility'].forEach(kind=>assert.match(autopilot,new RegExp(`['\"]${kind}['\"]`))));
 
 test('black-box challenge covers ten distinct product structures',()=>{

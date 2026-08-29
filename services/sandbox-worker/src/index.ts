@@ -13,7 +13,7 @@ type ScopedRequest = { sandboxId: string; scope: Scope };
 type ExecRequest = ScopedRequest & { executable: string; args?: string[]; cwd?: string; timeoutMs?: number };
 type StartProcessRequest = ExecRequest & { port?: number };
 
-const allowedExecutables = new Set(['node', 'pnpm', 'npm', 'git', 'tsc', 'eslint', 'vitest', 'playwright']);
+const allowedExecutables = new Set(['node', 'corepack', 'pnpm', 'npm', 'git', 'tsc', 'eslint', 'vitest', 'playwright']);
 const identifierPattern = /^[a-zA-Z0-9_-]{1,96}$/;
 const sandboxPattern = /^fnx-[a-f0-9]{24}$/;
 const encoder = new TextEncoder();

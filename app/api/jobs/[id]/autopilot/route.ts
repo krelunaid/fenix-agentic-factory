@@ -122,9 +122,9 @@ async function executeTask(context: ExecutionContext) {
   }
 
   if (task.phase === 9) {
-    const install = await sandbox.exec(scope, { executable: 'npm', args: ['install', '--no-audit', '--no-fund'], cwd: '/workspace', timeoutMs: 300_000 });
+    const install = await sandbox.exec(scope, { executable: 'corepack', args: ['pnpm', 'install', '--frozen-lockfile'], cwd: '/workspace', timeoutMs: 300_000 });
     if (!install.success) throw new Error(`dependency_install_failed:${install.stderr.slice(-800)}`);
-    const process = await sandbox.startProcess(scope, { executable: 'npm', args: ['run', 'dev', '--', '--host', '0.0.0.0', '--port', '8080'], cwd: '/workspace', timeoutMs: 300_000 }, 8080);
+    const process = await sandbox.startProcess(scope, { executable: 'corepack', args: ['pnpm', 'dev', '--', '--host', '0.0.0.0', '--port', '8080'], cwd: '/workspace', timeoutMs: 300_000 }, 8080);
     const preview = await sandbox.preview(scope, 8080);
     const sandboxId = await deriveSandboxId(scope);
     const previewId = crypto.randomUUID();
@@ -148,10 +148,10 @@ async function executeTask(context: ExecutionContext) {
 
   if (task.phase === 11) {
     const commands = [
-      { kind: 'typecheck', executable: 'npm', args: ['run', 'typecheck'] },
-      { kind: 'lint', executable: 'npm', args: ['run', 'lint'] },
-      { kind: 'unit', executable: 'npm', args: ['run', 'test'] },
-      { kind: 'build', executable: 'npm', args: ['run', 'build'] },
+      { kind: 'typecheck', executable: 'corepack', args: ['pnpm', 'typecheck'] },
+      { kind: 'lint', executable: 'corepack', args: ['pnpm', 'lint'] },
+      { kind: 'unit', executable: 'corepack', args: ['pnpm', 'test'] },
+      { kind: 'build', executable: 'corepack', args: ['pnpm', 'build'] },
     ] as const;
     const artifactIds: string[] = [];
     for (const command of commands) {

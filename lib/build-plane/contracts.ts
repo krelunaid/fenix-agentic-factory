@@ -5,7 +5,7 @@ export type BuildScope = {
 };
 
 export type SandboxCommand = {
-  executable: 'node' | 'pnpm' | 'npm' | 'git' | 'tsc' | 'eslint' | 'vitest' | 'playwright';
+  executable: 'node' | 'corepack' | 'pnpm' | 'npm' | 'git' | 'tsc' | 'eslint' | 'vitest' | 'playwright';
   args: string[];
   cwd: `/workspace${string}`;
   timeoutMs: number;
