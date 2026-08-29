@@ -96,11 +96,11 @@ const phaseAgents: Record<number, { name: string; role: string }> = {
   4: { name: "Maya", role: "Product Architect" },
   5: { name: "Iris + Atlas", role: "UX Director · Software Architect" },
   6: { name: "FENIX", role: "Orchestrator" },
-  7: { name: "Nova", role: "Sandbox Engineer" },
-  8: { name: "Builder team", role: "Frontend · Backend · Data" },
+  7: { name: "Nova", role: "Sandbox · Scaffolder" },
+  8: { name: "Builder team", role: "AI Frontend · Backend · Data" },
   9: { name: "Pixel", role: "Preview Agent" },
   10: { name: "Git", role: "Repository Agent" },
-  11: { name: "Sentinel", role: "QA · Security" },
+  11: { name: "Sentinel", role: "QA · Security · Diagnosi · Repair" },
   12: { name: "Echo", role: "Recovery Agent" },
   13: { name: "Meter", role: "Cost Agent" },
   15: { name: "Launch", role: "Deploy Agent" },
@@ -307,9 +307,29 @@ export default function Home() {
     try {
       await refreshWorkspace(projectId);
       for (let step = 0; step < 20; step += 1) {
-        const response = await fetch(`/api/jobs/${jobId}/autopilot`, {
-          method: "POST",
-        });
+        const before = await refreshWorkspace(projectId);
+        const next = before.tasks.find((task) =>
+          ["running", "queued", "ready"].includes(task.status),
+        );
+        setBuildLabel(next?.title ?? "Gli agenti stanno lavorando…");
+        const poll = window.setInterval(() => {
+          void refreshWorkspace(projectId)
+            .then((fresh) => {
+              const active = fresh.tasks.find((task) =>
+                ["running", "queued", "ready"].includes(task.status),
+              );
+              if (active) setBuildLabel(active.title);
+            })
+            .catch(() => undefined);
+        }, 1_500);
+        let response: Response;
+        try {
+          response = await fetch(`/api/jobs/${jobId}/autopilot`, {
+            method: "POST",
+          });
+        } finally {
+          window.clearInterval(poll);
+        }
         const data = (await response.json()) as {
           done?: boolean;
           progress?: number;
@@ -662,6 +682,17 @@ export default function Home() {
                   Preparazione del piano…
                 </div>
               )}
+              {workspace?.events.length ? (
+                <div className="agent-event-feed" aria-label="Evidenze live">
+                  <strong>Evidenze live</strong>
+                  {workspace.events.slice(-5).map((event) => (
+                    <p key={event.id} className={event.severity}>
+                      <i />
+                      {event.human_message}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
             </section>
           </div>
           <div className="revision-composer">
@@ -783,8 +814,8 @@ export default function Home() {
                   </div>
                   <h2>{buildLabel}</h2>
                   <p>
-                    La preview apparirà qui appena il Preview Agent avrà avviato
-                    il prototipo.
+                    Lo Scaffolder avvia una preview reale; poi il Builder la
+                    aggiorna mentre genera e verifica il codice.
                   </p>
                   <div className="skeleton-window">
                     <i />

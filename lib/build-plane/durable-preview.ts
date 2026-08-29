@@ -65,6 +65,8 @@ export function buildDurablePreviewHtml(bundle: PreviewBundle, endpoint: string)
   const html = bundle.files.find((file) => file.path === 'public/index.html')?.content;
   const css = bundle.files.find((file) => file.path === 'public/styles.css')?.content ?? '';
   const source = bundle.files.find((file) => file.path === 'public/app.js')?.content ?? '';
+  const experienceCss = bundle.files.find((file) => file.path === 'public/experience.css')?.content ?? '';
+  const experienceSource = bundle.files.find((file) => file.path === 'public/experience.js')?.content ?? '';
   if (!html) throw new Error('preview_html_missing');
   const replacements: Array<[string, string]> = [
     ["'/api/session'", `'${endpoint}&api=session'`],
@@ -81,7 +83,9 @@ export function buildDurablePreviewHtml(bundle: PreviewBundle, endpoint: string)
   const bridge = `<script>${escapeInline(`(()=>{let sequence=0;const pending=new Map();window.fenixPreviewFetch=(path,options={})=>{if(window.parent===window)return window.fetch(path,{credentials:'include',...options});return new Promise((resolve,reject)=>{const requestId='preview-'+Date.now()+'-'+(++sequence);const timer=setTimeout(()=>{pending.delete(requestId);reject(new Error('preview_bridge_timeout'))},15000);pending.set(requestId,{resolve,reject,timer});window.parent.postMessage({type:'fenix:preview-request',requestId,path:String(path),method:String(options.method||'GET'),body:typeof options.body==='string'?options.body:null},'*')})};window.addEventListener('message',event=>{if(event.source!==window.parent||!event.data||event.data.type!=='fenix:preview-response')return;const entry=pending.get(event.data.requestId);if(!entry)return;clearTimeout(entry.timer);pending.delete(event.data.requestId);entry.resolve(new Response(String(event.data.body||''),{status:Number(event.data.status)||500,headers:{'content-type':'application/json'}}))})})();`, 'script')}</script>`;
   return html
     .replace(/<link[^>]+href=["']\/styles\.css["'][^>]*>/i, '')
+    .replace(/<link[^>]+href=["']\/experience\.css["'][^>]*>/i, '')
     .replace(/<script[^>]+src=["']\/app\.js["'][^>]*><\/script>/i, '')
-    .replace('</head>', `<style>${escapeInline(css, 'style')}</style></head>`)
-    .replace('</body>', `${bridge}<script type="module">${escapeInline(javascript, 'script')}</script></body>`);
+    .replace(/<script[^>]+src=["']\/experience\.js["'][^>]*><\/script>/i, '')
+    .replace('</head>', `<style>${escapeInline(`${css}\n${experienceCss}`, 'style')}</style></head>`)
+    .replace('</body>', `${bridge}<script type="module">${escapeInline(`${javascript}\n${experienceSource}`, 'script')}</script></body>`);
 }
