@@ -26,12 +26,12 @@ export default function Documentation() {
         <h2>Cosa costruisce oggi</h2>
         <p>
           Puoi scegliere applicazione, sito web o prototipo. Il progetto viene analizzato dal Product Architect,
-          pianificato dal Software Architect e costruito da agenti frontend,
+          progettato da UX Director e Software Architect e costruito da agenti frontend,
           backend e dati. Le applicazioni includono interfaccia specifica per il
           dominio, API autenticate, ruoli, SQLite, CRUD, ricerca e metriche. I
           siti hanno una struttura pubblica distinta e un modulo contatti
           persistente. In entrambi i casi FENIX salva codice, attività degli
-          agenti, test e preview isolata.
+          agenti, test e una preview permanente servita direttamente da FENIX.
         </p>
         <p>
           <strong>Confine della beta:</strong> GitHub OAuth, deploy su provider

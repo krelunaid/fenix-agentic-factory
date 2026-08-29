@@ -1,6 +1,6 @@
 export const buildTaskDefinitions = [
   ['Product Architect analizza il brief', 4, 'ready'],
-  ['Software Architect progetta il prodotto', 5, 'blocked'],
+  ['UX Director e Software Architect progettano l’esperienza', 5, 'blocked'],
   ['Orchestrator assegna il lavoro', 6, 'blocked'],
   ['Sandbox Engineer prepara l’ambiente', 7, 'blocked'],
   ['Builder Agents scrivono frontend, backend e dati', 8, 'blocked'],

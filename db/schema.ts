@@ -209,6 +209,14 @@ export const previewSessions = sqliteTable('preview_sessions', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 }, (table) => [index('idx_previews_job_status').on(table.jobId, table.status)]);
 
+export const prototypeRecords = sqliteTable('prototype_records', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  payloadJson: text('payload_json').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+}, (table) => [index('idx_prototype_records_project_created').on(table.projectId, table.createdAt)]);
+
 export const repositories = sqliteTable('repositories', {
   id: text('id').primaryKey(),
   projectId: text('project_id').notNull().references(() => projects.id),

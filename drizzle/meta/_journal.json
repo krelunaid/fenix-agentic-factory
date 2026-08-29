@@ -64,6 +64,13 @@
       "when": 1787955780877,
       "tag": "0008_brief_riptide",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787982220266,
+      "tag": "0009_odd_maggott",
+      "breakpoints": true
     }
   ]
 }

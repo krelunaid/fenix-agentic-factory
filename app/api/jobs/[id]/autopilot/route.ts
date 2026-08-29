@@ -4,7 +4,7 @@ import { canOperate, requireJobAccess } from '../../../../../lib/core-access';
 import { createSandboxClient } from '../../../../../lib/build-plane/sandbox-client';
 import { deriveSandboxId } from '../../../../../lib/build-plane/sandbox-id';
 import { buildRepositoryIndex } from '../../../../../lib/build-plane/repo-index';
-import { extractJsonCandidate, generateAgenticApplication, inferProductBrief, productArchitectPrompt, softwareArchitectPlan } from '../../../../../lib/build-plane/agentic-generator';
+import { extractJsonCandidate, generateAgenticApplication, inferProductBrief, productArchitectPrompt, softwareArchitectPlan, visualDesignerPrompt } from '../../../../../lib/build-plane/agentic-generator';
 import { inspectVisualTarget } from '../../../../../lib/visual/client';
 import { invokeManagedAI } from '../../../../../lib/ai-gateway/client';
 
@@ -122,8 +122,27 @@ async function executeTask(context: ExecutionContext) {
 
   if (task.phase === 5) {
     const brief = await latestProductBrief(access.job.id, project);
-    const plan = softwareArchitectPlan(brief);
-    await recordSystemAgent(context, 'Software Architect', 'Creates an executable architecture from the approved product brief.', { mode: 'constraint-planner', routes: plan.routes, database: plan.data.engine });
+    let refined = brief;
+    let designCandidate: unknown = null;
+    if (env.AI_WORKER_URL && env.AI_CONTROL_TOKEN) {
+      try {
+        const designResult = await invokeManagedAI(env.AI_WORKER_URL, env.AI_CONTROL_TOKEN, { organizationId: access.job.organization_id, projectId: access.job.project_id, requestId: crypto.randomUUID(), capability: 'text', prompt: visualDesignerPrompt(brief), maxTokens: 1_400 });
+        designCandidate = extractJsonCandidate(designResult);
+        if (designCandidate && typeof designCandidate === 'object') {
+          const candidate = designCandidate as Record<string, unknown>;
+          const candidateEntity = candidate.entity && typeof candidate.entity === 'object' ? candidate.entity as Record<string, unknown> : {};
+          refined = inferProductBrief(project.name, project.description, { ...brief, ...candidate, appType: brief.appType, entity: { ...brief.entity, ...candidateEntity } });
+        }
+      } catch (error) {
+        await recordSystemAgent(context, 'UX Director', 'Creates the product-specific visual system, information hierarchy and interaction direction.', { mode: 'managed-ai', error: error instanceof Error ? error.message : 'provider_failed', fallback: 'validated-product-brief' }, 'failed');
+      }
+    }
+    await createArtifact(context, 'product_brief', JSON.stringify(refined));
+    const plan = softwareArchitectPlan(refined);
+    await Promise.all([
+      recordSystemAgent(context, 'UX Director', 'Creates the product-specific visual system, information hierarchy and interaction direction.', { mode: designCandidate ? 'managed-ai' : 'validated-product-brief', palette: refined.palette, pages: refined.pages }),
+      recordSystemAgent(context, 'Software Architect', 'Creates an executable architecture from the approved product brief.', { mode: 'constraint-planner', routes: plan.routes, database: plan.data.engine }),
+    ]);
     return createArtifact(context, 'architecture_plan', JSON.stringify(plan));
   }
 
@@ -165,7 +184,8 @@ async function executeTask(context: ExecutionContext) {
       env.DB.prepare("INSERT INTO repositories (id,project_id,provider,external_ref,default_branch,head_revision,created_at,updated_at) VALUES (?,?,?,'managed',?,?,?,?) ON CONFLICT(project_id) DO UPDATE SET provider=excluded.provider,head_revision=excluded.head_revision,updated_at=excluded.updated_at").bind(repositoryId, access.job.project_id, 'fenix-managed', 'main', headRevision, now, now),
       ...normalized.map((file) => env.DB.prepare('INSERT INTO repository_files (repository_id,path,sha256,byte_size,language,generated,indexed_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(repository_id,path) DO UPDATE SET sha256=excluded.sha256,byte_size=excluded.byte_size,language=excluded.language,generated=excluded.generated,indexed_at=excluded.indexed_at').bind(repositoryId, file.path, file.sha256, file.byteSize, file.language, file.generated ? 1 : 0, now)),
     ]);
-    return createArtifact(context, 'generated_source_manifest', JSON.stringify({ generator: 'fenix-agentic-web@2', productBrief: brief, headRevision, files: normalized }));
+    const bundle = await createArtifact(context, 'generated_source_bundle', JSON.stringify({ format: 'fenix-durable-preview-v1', productBrief: brief, files }));
+    return createArtifact(context, 'generated_source_manifest', JSON.stringify({ generator: 'fenix-agentic-web@3', productBrief: brief, headRevision, bundleId: bundle.id, files: normalized }));
   }
 
   if (task.phase === 9) {

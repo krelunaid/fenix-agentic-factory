@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import test from 'node:test';
 import { generateAgenticApplication, inferProductBrief } from '../lib/build-plane/agentic-generator';
+import { buildDurablePreviewHtml, decodePreviewBundle } from '../lib/build-plane/durable-preview';
 
 async function materialize(description: string) {
   const brief = inferProductBrief('Black-box build', description);
@@ -154,4 +155,28 @@ test('website briefs generate a public site with a persisted contact flow', asyn
   } finally {
     await rm(generated.directory, { recursive: true, force: true });
   }
+});
+
+test('generated source becomes a permanent same-site interactive preview', () => {
+  const brief = inferProductBrief('Spesa smart', 'Applicazione per segnare cosa compro e quanto spendo');
+  const files = generateAgenticApplication(brief);
+  const encoded = Buffer.from(JSON.stringify({ productBrief: brief, files })).toString('base64');
+  const html = buildDurablePreviewHtml(
+    decodePreviewBundle(encoded),
+    '/preview/project-1?token=signed',
+  );
+  assert.match(html, /<style>/);
+  assert.match(html, /<script type="module">/);
+  assert.match(html, /\/preview\/project-1\?token=signed&api=items/);
+  assert.doesNotMatch(html, /src="\/app\.js"/);
+  assert.doesNotMatch(html, /href="\/styles\.css"/);
+});
+
+test('personal purchase prompts create a shopping experience, not a generic dashboard', () => {
+  const brief = inferProductBrief('La mia spesa', 'App per segnare cosa compro e quanto spendo');
+  const files = generateAgenticApplication(brief);
+  const html = files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  assert.equal(brief.appType, 'shopping');
+  assert.match(html, /Lista acquisti/);
+  assert.match(html, /Budget sotto controllo/);
 });

@@ -94,7 +94,7 @@ const starters: Array<{
 ];
 const phaseAgents: Record<number, { name: string; role: string }> = {
   4: { name: "Maya", role: "Product Architect" },
-  5: { name: "Atlas", role: "Software Architect" },
+  5: { name: "Iris + Atlas", role: "UX Director · Software Architect" },
   6: { name: "FENIX", role: "Orchestrator" },
   7: { name: "Nova", role: "Sandbox Engineer" },
   8: { name: "Builder team", role: "Frontend · Backend · Data" },
