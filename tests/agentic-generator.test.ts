@@ -71,6 +71,32 @@ async function runWebsiteContact(directory: string) {
   }
 }
 
+async function runInstantApplicationPreview(directory: string) {
+  const port = 8193;
+  const child = spawn(process.execPath, ['server.mjs'], {
+    cwd: directory,
+    env: { ...process.env, PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  try {
+    let session: Response | null = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      try {
+        session = await fetch(`http://127.0.0.1:${port}/api/session`);
+        if (session.ok) break;
+      } catch {}
+    }
+    assert.equal(session?.status, 200, 'preview should open without credentials');
+    const list = await fetch(`http://127.0.0.1:${port}/api/items`);
+    const payload = await list.json() as { items?: unknown[] };
+    assert.equal(list.status, 200);
+    assert.ok(Array.isArray(payload.items) && payload.items.length > 0);
+  } finally {
+    child.kill('SIGTERM');
+  }
+}
+
 test('different briefs generate materially different full-stack applications', async () => {
   const crm = await materialize('CRM vendite per gestire clienti, lead, valore e stato delle opportunità');
   const booking = await materialize('Sistema di prenotazioni per uno studio con clienti, date e conferme');
@@ -82,6 +108,8 @@ test('different briefs generate materially different full-stack applications', a
     const bookingHtml = booking.files.find((file) => file.path === 'public/index.html')?.content ?? '';
     assert.match(crmHtml, /Clienti/);
     assert.match(bookingHtml, /Prenotazioni/);
+    assert.match(crmHtml, /Pipeline vendite/);
+    assert.match(bookingHtml, /Agenda prenotazioni/);
     assert.notEqual(crmHtml, bookingHtml);
     for (const result of [crm, booking]) {
       const paths = new Set(result.files.map((file) => file.path));
@@ -100,6 +128,11 @@ test('generated application passes auth, database, list and create scenario', as
     assert.match(output, /"status":"passed"/);
     assert.match(output, /"auth"/);
     assert.match(output, /"create"/);
+    const html = generated.files.find((file) => file.path === 'public/index.html')?.content ?? '';
+    assert.doesNotMatch(html, /id="login-form"/);
+    assert.match(html, /class="product-view/);
+    assert.match(html, /Demo interattiva/);
+    await runInstantApplicationPreview(generated.directory);
   } finally {
     await rm(generated.directory, { recursive: true, force: true });
   }
