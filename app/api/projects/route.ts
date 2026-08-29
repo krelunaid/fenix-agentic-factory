@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { NextResponse } from 'next/server';
 import { getChatGPTUser } from '../../chatgpt-auth';
 import { ensureCoreSchema } from '../../../db';
+import { buildTaskDefinitions } from '../../../lib/build-plane/task-graph';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,19 +71,7 @@ export async function POST(request: Request) {
   const projectId = crypto.randomUUID();
   const specificationId = crypto.randomUUID();
   const jobId = crypto.randomUUID();
-  const taskDefinitions = [
-    ['Product Brief e scenari', 4, 'ready'],
-    ['Piano architetturale e task graph', 5, 'blocked'],
-    ['Queue, eventi e budget', 6, 'blocked'],
-    ['Provisioning sandbox isolata', 7, 'blocked'],
-    ['Generazione agentica full-stack', 8, 'blocked'],
-    ['Preview runtime', 9, 'blocked'],
-    ['Repo index e patch localizzata', 10, 'blocked'],
-    ['Quality gate ed evidence', 11, 'blocked'],
-    ['Snapshot, rollback e fork', 12, 'blocked'],
-    ['AI routing e cost ledger', 13, 'blocked'],
-    ['Release preview verificata', 15, 'blocked'],
-  ] as const;
+  const taskDefinitions = buildTaskDefinitions;
   const taskIds = taskDefinitions.map(() => crypto.randomUUID());
   const statements = [
     env.DB.prepare('INSERT INTO projects (id,organization_id,name,description,status,progress,tone,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(projectId, core.orgId, name, description || 'Nuovo progetto FENIX', 'Planning', 8, visualDirection, core.user.userId, now, now),

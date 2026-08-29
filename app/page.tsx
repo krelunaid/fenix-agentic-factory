@@ -1,153 +1,805 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import NextImage from 'next/image';
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft, ArrowRight, Boxes, Bug, Check, ChevronDown, Code2, Columns3,
-  ExternalLink, FileCode2, Focus, GitBranch, Home as HomeIcon, Image as PictureIcon, Laptop,
-  LayoutDashboard, Menu, Monitor, PanelBottom, PanelLeft, PanelRight, Play, Plus,
-  RotateCcw, Send, Settings, ShieldCheck, Smartphone, Tablet, TestTube2, X, Zap,
-} from 'lucide-react';
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Circle,
+  Code2,
+  ExternalLink,
+  FileCode2,
+  Globe2,
+  Layers3,
+  LoaderCircle,
+  Monitor,
+  Plus,
+  RefreshCw,
+  Rocket,
+  Send,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
+  TestTube2,
+  UserRound,
+  WandSparkles,
+} from "lucide-react";
 
-type Project = { id:string; name:string; description:string; status:'Planning'|'Building'|'Review'|'Ready'; progress:number; updated:string; tone:string };
-type CoreState = 'checking'|'connected'|'unavailable';
-type Direction = 'essential'|'expressive'|'premium';
-type WorkspaceMode = 'build'|'focus'|'visual'|'debug'|'compare'|'mobile';
-type Device = 'mobile-sm'|'mobile-lg'|'tablet-p'|'tablet-l'|'laptop'|'desktop';
-type WorkspaceData = {
-  brief:{objective?:string;version?:number}|null;
-  job:{id:string;status:string;budget_limit:number}|null;
-  tasks:Array<{id:string;title:string;status:string;phase:number;attempts:number}>;
-  events:Array<{id:string;human_message:string;created_at:number;severity:string}>;
-  usage:{amount?:number;units?:number}|null;
-  repositoryFiles:Array<{path:string;sha256:string;language:string;generated:number}>;
-  qualityRuns:Array<{id:string;kind:string;status:string;summary:string;duration_ms:number|null}>;
-  deployments:Array<{id:string;environment:string;url:string|null;status:string;version:string}>;
-  previews:Array<{id:string;url:string|null;status:string;expires_at:number;live:number}>;
+type Project = {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+  progress: number;
+  updated: string;
+  tone: string;
 };
-type ChatMessage = {id:string;conversation_id?:string;role:'user'|'assistant';content:string;status:string};
-type VisualResult = {id?:string;sourcePath?:string;sourceLine?:number;patchable?:boolean;cropArtifactId?:string|null;inspection?:{visualDiff?:{exactMatch?:boolean;perceptual?:{changedRatio?:number}}|null}};
-type SourceDraft = {path:string;content:string;original:string;sha256:string};
-type ProjectsResponse = {projects:Project[];user:{displayName:string};stats:{activeJobs:number;evidenceToday:number;spendMonth:number}};
-type ConversationsResponse = {conversations:Array<{id:string}>;messages:ChatMessage[]};
-type VisualHistory = {id:string;selector:string;crop_artifact_id:string|null;constraints_json:string;created_at:number};
-type RecoveryPoint = {id:string;parent_id:string|null;source_revision:string;artifact_id:string;created_at:number};
+type Task = {
+  id: string;
+  title: string;
+  status: string;
+  phase: number;
+  attempts: number;
+};
+type Workspace = {
+  brief: { objective?: string; version?: number } | null;
+  job: { id: string; status: string; budget_limit: number } | null;
+  tasks: Task[];
+  events: Array<{
+    id: string;
+    human_message: string;
+    created_at: number;
+    severity: string;
+  }>;
+  usage: { amount?: number; units?: number } | null;
+  repositoryFiles: Array<{ path: string; language: string }>;
+  qualityRuns: Array<{
+    id: string;
+    kind: string;
+    status: string;
+    summary: string;
+  }>;
+  previews: Array<{ id: string; url: string | null; live: number }>;
+};
+type ChatMessage = { id: string; role: "user" | "assistant"; content: string };
+type ProductKind = "app" | "website" | "prototype";
+type PreviewTab = "preview" | "code" | "tests";
+type Device = "desktop" | "mobile";
 
-const directions: Array<{id:Direction;label:string;kicker:string;description:string}> = [
-  {id:'essential',label:'Essential',kicker:'Chiaro e diretto',description:'Gerarchia netta, densità equilibrata, minimo ornamento.'},
-  {id:'expressive',label:'Expressive',kicker:'Caldo e riconoscibile',description:'Accenti editoriali e ritmo più deciso, sempre leggibile.'},
-  {id:'premium',label:'Premium',kicker:'Preciso e materico',description:'Dettaglio raffinato, spazio generoso, contrasto controllato.'},
+const starters: Array<{
+  kind: ProductKind;
+  label: string;
+  icon: typeof Layers3;
+  prompt: string;
+}> = [
+  {
+    kind: "app",
+    label: "Applicazione",
+    icon: Layers3,
+    prompt: "Crea un CRM per gestire clienti, opportunità e attività del team",
+  },
+  {
+    kind: "website",
+    label: "Sito web",
+    icon: Globe2,
+    prompt:
+      "Crea un sito web premium per uno studio creativo con servizi e modulo contatti",
+  },
+  {
+    kind: "prototype",
+    label: "Prototipo",
+    icon: WandSparkles,
+    prompt: "Crea un prototipo interattivo per organizzare progetti e scadenze",
+  },
 ];
-const modes: Array<{id:WorkspaceMode;label:string;icon:typeof Play}> = [
-  {id:'build',label:'Build',icon:Play},{id:'focus',label:'Focus',icon:Focus},{id:'visual',label:'Visual Edit',icon:PictureIcon},
-  {id:'debug',label:'Debug',icon:Bug},{id:'compare',label:'Compare',icon:Columns3},{id:'mobile',label:'Mobile Studio',icon:Smartphone},
-];
-const devices: Array<{id:Device;label:string;short:string;width:number;height:number;icon:typeof Monitor}> = [
-  {id:'mobile-sm',label:'Mobile piccolo · 375',short:'M S',width:375,height:812,icon:Smartphone},
-  {id:'mobile-lg',label:'Mobile grande · 430',short:'M L',width:430,height:932,icon:Smartphone},
-  {id:'tablet-p',label:'Tablet verticale · 834',short:'T P',width:834,height:1112,icon:Tablet},
-  {id:'tablet-l',label:'Tablet orizzontale · 1024',short:'T L',width:1024,height:768,icon:Tablet},
-  {id:'laptop',label:'Laptop · 1366',short:'L',width:1366,height:768,icon:Laptop},
-  {id:'desktop',label:'Desktop · 1600',short:'D',width:1600,height:1000,icon:Monitor},
-];
-
-function Status({state,label}:{state:CoreState|string;label:string}) { return <span className={`status-indicator ${state}`}><i aria-hidden="true"/>{label}</span>; }
-function IconButton({label,children,onClick,active=false}:{label:string;children:React.ReactNode;onClick?:()=>void;active?:boolean}) { return <button type="button" className={`icon-button${active?' active':''}`} aria-label={label} title={label} onClick={onClick}>{children}</button>; }
+const phaseAgents: Record<number, { name: string; role: string }> = {
+  4: { name: "Maya", role: "Product Architect" },
+  5: { name: "Atlas", role: "Software Architect" },
+  6: { name: "FENIX", role: "Orchestrator" },
+  7: { name: "Nova", role: "Sandbox Engineer" },
+  8: { name: "Builder team", role: "Frontend · Backend · Data" },
+  9: { name: "Pixel", role: "Preview Agent" },
+  10: { name: "Git", role: "Repository Agent" },
+  11: { name: "Sentinel", role: "QA · Security" },
+  12: { name: "Echo", role: "Recovery Agent" },
+  13: { name: "Meter", role: "Cost Agent" },
+  15: { name: "Launch", role: "Deploy Agent" },
+};
+const projectTitle = (value: string) =>
+  (
+    value
+      .replace(/^(crea|costruisci|realizza)\s+(un|una)?\s*/i, "")
+      .trim()
+      .split(/[,.\n]/)[0] || "Nuovo progetto"
+  ).slice(0, 72);
 
 export default function Home() {
-  const [view,setView]=useState<'home'|'workspace'>('home');
-  const [projects,setProjects]=useState<Project[]>([]);
-  const [prompt,setPrompt]=useState('');
-  const [direction,setDirection]=useState<Direction>('essential');
-  const [activeProject,setActiveProject]=useState<Project|null>(null);
-  const [coreState,setCoreState]=useState<CoreState>('checking');
-  const [workspaceState,setWorkspaceState]=useState<CoreState>('checking');
-  const [displayName,setDisplayName]=useState('André');
-  const [stats,setStats]=useState({activeJobs:0,evidenceToday:0,spendMonth:0});
-  const [workspaceData,setWorkspaceData]=useState<WorkspaceData|null>(null);
-  const [chatConversationId,setChatConversationId]=useState<string|null>(null);
-  const [chatMessages,setChatMessages]=useState<ChatMessage[]>([]);
-  const [chatInput,setChatInput]=useState('');
-  const [chatSending,setChatSending]=useState(false);
-  const [briefOpen,setBriefOpen]=useState(true);
-  const [mode,setMode]=useState<WorkspaceMode>('build');
-  const [device,setDevice]=useState<Device>('desktop');
-  const [leftOpen,setLeftOpen]=useState(true);
-  const [rightOpen,setRightOpen]=useState(true);
-  const [leftWidth,setLeftWidth]=useState(300);
-  const [rightWidth,setRightWidth]=useState(290);
-  const [dockOpen,setDockOpen]=useState(false);
-  const [rightTab,setRightTab]=useState<'inspect'|'tokens'|'files'|'quality'|'deploy'>('files');
-  const [dockTab,setDockTab]=useState<'tasks'|'tests'|'console'|'versions'|'costs'>('tasks');
-  const [mobilePanel,setMobilePanel]=useState<'none'|'chat'|'inspect'>('none');
-  const [selector,setSelector]=useState('#app');
-  const [frozenPaths,setFrozenPaths]=useState<string[]>(['.openai/hosting.json']);
-  const [freezeInput,setFreezeInput]=useState('');
-  const [visualResult,setVisualResult]=useState<VisualResult|null>(null);
-  const [visualHistory,setVisualHistory]=useState<VisualHistory[]>([]);
-  const [recoveryPoints,setRecoveryPoints]=useState<RecoveryPoint[]>([]);
-  const [visualBusy,setVisualBusy]=useState(false);
-  const [sourceDraft,setSourceDraft]=useState<SourceDraft|null>(null);
-  const [recoveryPointId,setRecoveryPointId]=useState<string|null>(null);
-  const [patchBusy,setPatchBusy]=useState(false);
-  const [designTokens,setDesignTokens]=useState<Record<string,string>>({'color.background':'#F7F7F5','color.surface':'#FFFFFF','color.ink':'#181A1F','color.accent':'#E36F2F','space.base':'4px','radius.medium':'12px','font.sans':'Geist','shadow.panel':'0 8px 24px rgb(24 26 31 / 5%)','breakpoint.mobile':'430px'});
-  const [pipelineBusy,setPipelineBusy]=useState(false);
-  const [creatingProject,setCreatingProject]=useState(false);
-  const [pipelineStep,setPipelineStep]=useState('');
-  const [workspaceRevision,setWorkspaceRevision]=useState(0);
-  const [toast,setToast]=useState('');
-  const previewRef=useRef<HTMLIFrameElement|null>(null);
-  const createBusyRef=useRef(false);
+  const [screen, setScreen] = useState<"home" | "builder">("home");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [displayName, setDisplayName] = useState("Andrea");
+  const [prompt, setPrompt] = useState("");
+  const [kind, setKind] = useState<ProductKind>("app");
+  const [activeProject, setActiveProject] = useState<Project | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [revision, setRevision] = useState("");
+  const [building, setBuilding] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [buildLabel, setBuildLabel] = useState("Preparazione del team…");
+  const [previewTab, setPreviewTab] = useState<PreviewTab>("preview");
+  const [device, setDevice] = useState<Device>("desktop");
+  const [toast, setToast] = useState("");
+  const busyRef = useRef(false);
+  const livePreview = useMemo(
+    () =>
+      workspace?.previews.find((item) => item.live === 1 && item.url)?.url ??
+      null,
+    [workspace],
+  );
+  const completedTasks =
+    workspace?.tasks.filter((task) => task.status === "completed").length ?? 0;
+  const currentTask =
+    workspace?.tasks.find((task) =>
+      ["running", "queued", "ready"].includes(task.status),
+    ) ?? workspace?.tasks.find((task) => task.status === "blocked");
+  async function loadProjects() {
+    try {
+      const response = await fetch("/api/projects");
+      if (!response.ok) return;
+      const data = (await response.json()) as {
+        projects: Project[];
+        user: { displayName: string };
+      };
+      setProjects(data.projects);
+      setDisplayName(data.user.displayName.split(/\s|@/)[0] || "Andrea");
+    } catch {}
+  }
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/projects", { signal: controller.signal })
+      .then(async (response) =>
+        response.ok
+          ? ((await response.json()) as {
+              projects: Project[];
+              user: { displayName: string };
+            })
+          : null,
+      )
+      .then((data) => {
+          if (!data) return;
+          setProjects(data.projects);
+          setDisplayName(data.user.displayName.split(/\s|@/)[0] || "Andrea");
+        })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+  async function refreshWorkspace(projectId: string) {
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/workspace`,
+    );
+    if (!response.ok) throw new Error("workspace_unavailable");
+    const data = (await response.json()) as Workspace;
+    setWorkspace(data);
+    return data;
+  }
+  async function createProject() {
+    const idea = prompt.trim();
+    if (!idea || busyRef.current) return;
+    busyRef.current = true;
+    setCreating(true);
+    setBuildLabel("Creo il progetto e convoco gli agenti…");
+    try {
+      const prefix =
+        kind === "website"
+          ? "Sito web: "
+          : kind === "prototype"
+            ? "Prototipo interattivo: "
+            : "Applicazione full-stack: ";
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: projectTitle(idea),
+          description: `${prefix}${idea}`,
+          visualDirection: "premium",
+        }),
+      });
+      const data = (await response.json()) as {
+        project?: Project;
+        jobId?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.project || !data.jobId)
+        throw new Error(data.error || "creation_failed");
+      setActiveProject(data.project);
+      setProjects((current) => [data.project!, ...current]);
+      setMessages([{ id: crypto.randomUUID(), role: "user", content: idea }]);
+      setScreen("builder");
+      setWorkspace(null);
+      busyRef.current = false;
+      await runAutopilot(data.jobId, data.project.id);
+    } catch (error) {
+      busyRef.current = false;
+      notify(
+        `Non sono riuscito ad avviare la build: ${error instanceof Error ? error.message : "errore"}`,
+      );
+    } finally {
+      setCreating(false);
+    }
+  }
+  async function runAutopilot(jobId: string, projectId: string) {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBuilding(true);
+    setPreviewTab("preview");
+    try {
+      await refreshWorkspace(projectId);
+      for (let step = 0; step < 20; step += 1) {
+        const response = await fetch(`/api/jobs/${jobId}/autopilot`, {
+          method: "POST",
+        });
+        const data = (await response.json()) as {
+          done?: boolean;
+          progress?: number;
+          task?: { title?: string };
+          error?: string;
+        };
+        if (!response.ok) throw new Error(data.error || "build_failed");
+        setBuildLabel(
+          data.done
+            ? "Prototipo pronto"
+            : (data.task?.title ?? "Gli agenti stanno lavorando…"),
+        );
+        const fresh = await refreshWorkspace(projectId);
+        if (typeof data.progress === "number")
+          setActiveProject((current) =>
+            current
+              ? {
+                  ...current,
+                  progress: data.progress!,
+                  status: data.done ? "Ready" : "Building",
+                }
+              : current,
+          );
+        if (data.done || fresh.job?.status === "SUCCEEDED") break;
+      }
+      setBuildLabel("Prototipo pronto da provare");
+      notify(
+        "Build completata. Puoi usare il prototipo e chiedere altre modifiche.",
+      );
+    } catch (error) {
+      setBuildLabel("Build sospesa");
+      notify(
+        `La build si è fermata: ${error instanceof Error ? error.message : "errore"}`,
+      );
+    } finally {
+      busyRef.current = false;
+      setBuilding(false);
+      void loadProjects();
+    }
+  }
+  async function requestRevision() {
+    const instruction = revision.trim();
+    if (!instruction || !activeProject || building) return;
+    setRevision("");
+    setMessages((current) => [
+      ...current,
+      { id: crypto.randomUUID(), role: "user", content: instruction },
+    ]);
+    try {
+      const response = await fetch(
+        `/api/projects/${activeProject.id}/rebuild`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ instruction }),
+        },
+      );
+      const data = (await response.json()) as {
+        jobId?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.jobId)
+        throw new Error(data.error || "revision_failed");
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            "Ricevuto. Ho aggiornato il brief e il team sta ricostruendo il prodotto.",
+        },
+      ]);
+      await runAutopilot(data.jobId, activeProject.id);
+    } catch (error) {
+      notify(
+        `Modifica non avviata: ${error instanceof Error ? error.message : "errore"}`,
+      );
+    }
+  }
+  function openProject(project: Project) {
+    setActiveProject(project);
+    setScreen("builder");
+    setMessages([
+      { id: crypto.randomUUID(), role: "user", content: project.description },
+    ]);
+    setWorkspace(null);
+    void refreshWorkspace(project.id).catch(() =>
+      notify("Progetto temporaneamente non disponibile"),
+    );
+  }
+  function notify(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 3600);
+  }
 
-  useEffect(()=>{const c=new AbortController();fetch('/api/projects',{signal:c.signal}).then(async r=>{if(!r.ok)throw new Error();return r.json() as Promise<ProjectsResponse>}).then(d=>{setProjects(d.projects);setDisplayName(d.user.displayName.split(/\s|@/)[0]||'André');setStats(d.stats);setCoreState('connected')}).catch(e=>{if(e?.name!=='AbortError')setCoreState('unavailable')});return()=>c.abort()},[]);
-  useEffect(()=>{if(view!=='workspace'||!activeProject)return;const c=new AbortController();Promise.all([
-    fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/workspace`,{signal:c.signal}).then(r=>{if(!r.ok)throw new Error();return r.json() as Promise<WorkspaceData>}),
-    fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/conversations`,{signal:c.signal}).then(r=>r.ok?r.json() as Promise<ConversationsResponse>:{conversations:[],messages:[]}),
-  ]).then(([w,ch])=>{setWorkspaceData(w);const cid=ch.conversations?.[0]?.id??null;setChatConversationId(cid);setChatMessages(cid?ch.messages.filter((m:ChatMessage)=>m.conversation_id===cid&&m.status!=='failed'):[]);setWorkspaceState('connected');void fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/visual`,{signal:c.signal}).then(r=>r.ok?r.json() as Promise<{selections?:VisualHistory[]}>:{selections:[]}).then(data=>setVisualHistory(data.selections??[])).catch(e=>{if(e?.name!=='AbortError')setVisualHistory([])});if(w.job?.id)void fetch(`/api/jobs/${w.job.id}/recovery`,{signal:c.signal}).then(r=>r.ok?r.json() as Promise<{recoveryPoints?:RecoveryPoint[]}>:{recoveryPoints:[]}).then(data=>setRecoveryPoints(data.recoveryPoints??[])).catch(e=>{if(e?.name!=='AbortError')setRecoveryPoints([])});}).catch(e=>{if(e?.name!=='AbortError'){setWorkspaceData(null);setWorkspaceState('unavailable')}});return()=>c.abort()},[view,activeProject,workspaceRevision]);
-  useEffect(()=>{const onMessage=(event:MessageEvent)=>{if(event.source!==previewRef.current?.contentWindow||event.data?.type!=='fenix:visual-select')return;const nextSelector=typeof event.data.selector==='string'?event.data.selector:'';if(!nextSelector)return;setSelector(nextSelector);setVisualResult({sourcePath:typeof event.data.sourcePath==='string'?event.data.sourcePath:undefined,sourceLine:typeof event.data.sourceLine==='number'?event.data.sourceLine:undefined,patchable:false});setToast('Elemento selezionato nella preview. Conferma Ispeziona per verificare source mapping e scope.');window.setTimeout(()=>setToast(''),3200);};window.addEventListener('message',onMessage);return()=>window.removeEventListener('message',onMessage)},[]);
-  useEffect(()=>{previewRef.current?.contentWindow?.postMessage({type:'fenix:visual-mode',enabled:mode==='visual'},'*')},[mode,workspaceData]);
+  if (screen === "home")
+    return (
+      <main className="fenix-home">
+        <header className="home-nav">
+          <a className="fenix-brand" href="#">
+            <span>F</span>FENIX
+          </a>
+          <nav>
+            <button
+              onClick={() =>
+                window.open("/docs", "_blank", "noopener,noreferrer")
+              }
+            >
+              Documentazione
+            </button>
+            <span className="avatar">
+              <UserRound />
+            </span>
+          </nav>
+        </header>
+        <section className="prompt-stage">
+          <div className="stage-badge">
+            <Sparkles />
+            Software factory agentica
+          </div>
+          <h1>Che cosa vuoi costruire?</h1>
+          <p>
+            Descrivi un’applicazione o un sito. Gli agenti lo progettano,
+            scrivono il codice, lo testano e ti mostrano un prototipo
+            interattivo.
+          </p>
+          <div className="kind-switch">
+            {starters.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.kind}
+                  className={kind === item.kind ? "active" : ""}
+                  onClick={() => setKind(item.kind)}
+                >
+                  <Icon />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="main-composer">
+            <textarea
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  void createProject();
+                }
+              }}
+              placeholder={starters.find((item) => item.kind === kind)?.prompt}
+              aria-label="Descrivi cosa vuoi costruire"
+            />
+            <div>
+              <span>Invio con ⌘ Enter</span>
+              <button
+                className="build-button"
+                onClick={() => void createProject()}
+                disabled={!prompt.trim() || creating}
+              >
+                {creating ? <LoaderCircle className="spin" /> : <ArrowRight />}
+                {creating ? "Avvio agenti" : "Costruisci"}
+              </button>
+            </div>
+          </div>
+          <div className="starter-row">
+            {starters.map((item) => (
+              <button
+                key={item.prompt}
+                onClick={() => {
+                  setKind(item.kind);
+                  setPrompt((current) =>
+                    current.trim() ? current : item.prompt,
+                  );
+                }}
+              >
+                <Plus />
+                {item.prompt}
+              </button>
+            ))}
+          </div>
+        </section>
+        <section className="recent-projects">
+          <div>
+            <div>
+              <span>I TUOI PROGETTI</span>
+              <h2>Continua da dove eri rimasto</h2>
+            </div>
+            <small>Ciao {displayName}</small>
+          </div>
+          <div className="recent-grid">
+            {projects.slice(0, 6).map((project) => (
+              <button
+                className="recent-card"
+                key={project.id}
+                onClick={() => openProject(project)}
+              >
+                <div className="card-preview">
+                  <span>{project.name.slice(0, 1).toUpperCase()}</span>
+                  <i style={{ width: `${project.progress}%` }} />
+                </div>
+                <div>
+                  <strong>{project.name}</strong>
+                  <p>{project.description}</p>
+                  <small>
+                    <span
+                      className={`state-dot ${project.status.toLowerCase()}`}
+                    />
+                    {project.status} · {project.progress}%
+                  </small>
+                </div>
+              </button>
+            ))}
+            {projects.length === 0 && (
+              <div className="no-projects">
+                <Rocket />
+                <strong>Il tuo primo progetto parte da un prompt</strong>
+                <p>Scrivi cosa vuoi creare qui sopra.</p>
+              </div>
+            )}
+          </div>
+        </section>
+        {toast && (
+          <div className="toast" role="status">
+            {toast}
+          </div>
+        )}
+      </main>
+    );
 
-  const totalProgress=useMemo(()=>projects.length?Math.round(projects.reduce((s,p)=>s+p.progress,0)/projects.length):0,[projects]);
-  const livePreview=useMemo(()=>workspaceData?.previews.find(p=>p.live===1&&p.url)||null,[workspaceData]);
-  const selectedDevice=devices.find(d=>d.id===device)!;
-  const notify=(message:string)=>{setToast(message);window.setTimeout(()=>setToast(''),3200)};
-  const openProject=(project:Project)=>{setWorkspaceState('checking');setActiveProject(project);setView('workspace')};
-  const activateMode=(next:WorkspaceMode)=>{setMode(next);if(next==='build'){setLeftOpen(true);setRightOpen(true);setDockOpen(false)}else if(next==='focus'){setLeftOpen(false);setRightOpen(false);setDockOpen(false)}else if(next==='visual'){setRightOpen(true);setRightTab('inspect')}else if(next==='debug'){setRightOpen(true);setRightTab('quality');setDockTab('console');setDockOpen(true)}else if(next==='compare'){setLeftOpen(false);setRightOpen(true);setRightTab('inspect');setDockTab('tests');setDockOpen(true)}else{setDevice('mobile-lg');setLeftOpen(false);setRightOpen(true);setRightTab('inspect')}};
-  const shareProject=async()=>{try{await navigator.clipboard.writeText(window.location.href);notify('Link del workspace copiato. L’accesso resta governato dai permessi del sito.')}catch{notify('Copia non disponibile in questo browser.')}};
-  const openReleaseGate=()=>{setRightOpen(true);setRightTab('deploy');setDockTab('tests');setDockOpen(true);notify('Quality gate e ambienti aperti. La produzione resta bloccata senza evidence e approvazione.');};
-  const startResize=(side:'left'|'right',event:React.PointerEvent)=>{event.preventDefault();const onMove=(move:PointerEvent)=>{if(side==='left')setLeftWidth(Math.min(460,Math.max(240,move.clientX-64)));else setRightWidth(Math.min(440,Math.max(250,window.innerWidth-move.clientX)));};const stop=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',stop);};window.addEventListener('pointermove',onMove);window.addEventListener('pointerup',stop);};
-
-  async function createProject(){const idea=prompt.trim();if(!idea)return notify('Descrivi prima cosa vuoi creare.');if(createBusyRef.current)return;createBusyRef.current=true;setCreatingProject(true);try{const r=await fetch('/api/projects',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:idea,description:`Prodotto richiesto: ${idea}`,visualDirection:direction})});const d=await r.json() as {project?:Project;jobId?:string;error?:string};if(!r.ok||!d.project||!d.jobId)throw new Error(d.error||'project_creation_failed');setProjects(c=>[d.project!,...c]);setWorkspaceState('checking');setActiveProject(d.project);setPrompt('');setView('workspace');await runAutopilot(d.jobId,d.project.id)}catch(e){notify(`Creazione non completata: ${e instanceof Error?e.message:'errore'}. Riprova senza perdere il brief.`)}finally{createBusyRef.current=false;setCreatingProject(false)}}
-  async function sendChat(){const content=chatInput.trim();if(!content||chatSending||!activeProject)return;setChatSending(true);setChatInput('');setChatMessages(c=>[...c,{id:`local-${Date.now()}`,role:'user',content,status:'complete'}]);try{let conversationId=chatConversationId;if(!conversationId){const r=await fetch(`/api/projects/${activeProject.id}/conversations`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'create',title:content.slice(0,80)})});if(!r.ok)throw new Error();const created=await r.json() as {id:string};conversationId=String(created.id);setChatConversationId(conversationId)}const r=await fetch(`/api/projects/${activeProject.id}/conversations`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'send',conversationId,content})});const d=await r.json() as {assistant?:ChatMessage};const assistant=d.assistant;if(assistant?.content)setChatMessages(c=>[...c,assistant]);if(!r.ok)notify('Messaggio salvato, ma la risposta IA non è disponibile.')}catch{notify('Invio non completato. Riprova.')}finally{setChatSending(false)}}
-  async function readSource(path:string){if(!workspaceData?.job)return;const r=await fetch(`/api/jobs/${workspaceData.job.id}/sandbox`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'read-file',path})});const d=await r.json() as {path?:string;content?:string;sha256?:string;error?:string};if(!r.ok||!d.path||typeof d.content!=='string'||!d.sha256)throw new Error(d.error||'source_read_failed');setSourceDraft({path:d.path,content:d.content,original:d.content,sha256:d.sha256});}
-  async function inspectVisual(){if(!activeProject)return;setVisualBusy(true);setVisualResult(null);setSourceDraft(null);try{const body=livePreview?{action:'inspect',selector,previewId:livePreview.id,width:selectedDevice.width,height:selectedDevice.height,frozenPaths,baselineArtifactId:visualHistory.find(item=>item.crop_artifact_id)?.crop_artifact_id}:{action:'select',selector,frozenPaths,constraints:{viewport:{width:selectedDevice.width,height:selectedDevice.height},mode:'assisted-no-runtime'}};const r=await fetch(`/api/projects/${activeProject.id}/visual`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const d=await r.json() as VisualResult&{error?:string};if(!r.ok)throw new Error(d.error||'inspection_failed');setVisualResult(d);if(d.id)setVisualHistory(current=>[{id:d.id!,selector,crop_artifact_id:d.cropArtifactId??null,constraints_json:'{}',created_at:Date.now()},...current]);if(d.patchable&&d.sourcePath)await readSource(d.sourcePath);notify(livePreview?'Elemento ispezionato e screenshot archiviato.':'Selezione registrata; serve una preview live per screenshot e source mapping.')}catch(e){notify(`Ispezione non completata: ${e instanceof Error?e.message:'errore'}`)}finally{setVisualBusy(false)}}
-  async function applyVisualPatch(){if(!workspaceData?.job||!sourceDraft||sourceDraft.content===sourceDraft.original)return;setPatchBusy(true);try{const r=await fetch(`/api/jobs/${workspaceData.job.id}/patches`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({operations:[{path:sourceDraft.path,operation:'update',expectedSha256:sourceDraft.sha256,content:sourceDraft.content}]})});const d=await r.json() as {recoveryPointId?:string|null;operations?:Array<{contentSha256?:string}>;error?:string};if(!r.ok)throw new Error(d.error||'patch_failed');const nextHash=d.operations?.[0]?.contentSha256??sourceDraft.sha256;setSourceDraft(current=>current?{...current,original:current.content,sha256:nextHash}:current);setRecoveryPointId(d.recoveryPointId??null);if(d.recoveryPointId)setRecoveryPoints(current=>[{id:d.recoveryPointId!,parent_id:current[0]?.id??null,source_revision:'patch corrente',artifact_id:'snapshot',created_at:Date.now()},...current]);notify(d.recoveryPointId?'Patch applicata con recovery point pronta.':'Patch applicata; snapshot oltre il limite di persistenza.')}catch(e){notify(`Patch non applicata: ${e instanceof Error?e.message:'errore'}`)}finally{setPatchBusy(false)}}
-  async function undoVisualPatch(){if(!workspaceData?.job||!recoveryPointId)return;setPatchBusy(true);try{const r=await fetch(`/api/jobs/${workspaceData.job.id}/recovery`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'apply-rollback',recoveryPointId})});const d=await r.json() as {error?:string};if(!r.ok)throw new Error(d.error||'rollback_failed');setRecoveryPointId(null);setRecoveryPoints(current=>current.filter(point=>point.id!==recoveryPointId));setSourceDraft(null);notify('Rollback applicato e repository index riallineato.')}catch(e){notify(`Rollback non applicato: ${e instanceof Error?e.message:'errore'}`)}finally{setPatchBusy(false)}}
-  async function saveDesignTokens(){if(!activeProject)return;setVisualBusy(true);try{const r=await fetch(`/api/projects/${activeProject.id}/visual`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'save-tokens',tokens:designTokens})});const d=await r.json() as {version?:number;error?:string};if(!r.ok)throw new Error(d.error||'token_save_failed');notify(`Design tokens v${d.version} salvati; revisione umana richiesta prima dell’applicazione.`)}catch(e){notify(`Token non salvati: ${e instanceof Error?e.message:'errore'}`)}finally{setVisualBusy(false)}}
-  async function runAutopilot(jobId=workspaceData?.job?.id,projectId=activeProject?.id){if(!jobId||!projectId||pipelineBusy)return;setPipelineBusy(true);setDockOpen(true);setDockTab('console');setPipelineStep('Avvio pipeline verificabile…');try{let completed=false;for(let step=0;step<30;step+=1){const r=await fetch(`/api/jobs/${jobId}/autopilot`,{method:'POST'});const d=await r.json() as {done?:boolean;progress?:number;task?:{title?:string};error?:string};if(!r.ok)throw new Error(d.error||'pipeline_failed');setPipelineStep(d.done?'Certificazione completata':`${d.task?.title??'Task'} · ${d.progress??0}%`);if(typeof d.progress==='number'){const nextProgress=d.progress;setActiveProject(current=>current?.id===projectId?{...current,progress:nextProgress,status:d.done?'Ready':'Building'}:current);setProjects(current=>current.map(project=>project.id===projectId?{...project,progress:nextProgress,status:d.done?'Ready':'Building'}:project))}setWorkspaceRevision(value=>value+1);if(d.done){completed=true;break}}if(!completed)throw new Error('pipeline_step_limit');setRightOpen(true);setRightTab('quality');notify('Pipeline completata: repository, preview, quality gate, recovery ed evidence sono reali.')}catch(e){notify(`Pipeline sospesa: ${e instanceof Error?e.message:'errore'}. Puoi riprenderla senza perdere i risultati.`);setPipelineStep('Pipeline sospesa · ripresa disponibile')}finally{setPipelineBusy(false);setWorkspaceRevision(value=>value+1)}}
-
-  return <main className="app-shell">
-    <aside className="rail" aria-label="Navigazione principale"><button className="brand-mark" onClick={()=>setView('home')} aria-label="FENIX home">F</button><nav><IconButton label="Home" active={view==='home'} onClick={()=>setView('home')}><HomeIcon/></IconButton><IconButton label="Workspace" active={view==='workspace'} onClick={()=>activeProject&&setView('workspace')}><LayoutDashboard/></IconButton><IconButton label="Versioni" onClick={()=>{if(activeProject){setView('workspace');setDockTab('versions');setDockOpen(true)}else notify('Apri prima un progetto.')}}><RotateCcw/></IconButton><IconButton label="Ambienti e integrazioni" onClick={()=>{if(activeProject){setView('workspace');openReleaseGate()}else notify('Apri prima un progetto.')}}><Boxes/></IconButton></nav><div className="rail-bottom"><IconButton label="Impostazioni e guida" onClick={()=>window.open('/docs','_blank','noopener,noreferrer')}><Settings/></IconButton><span className="avatar" title={displayName}>{displayName.slice(0,2).toUpperCase()}</span></div></aside>
-    {view==='home'?<section className="home-view">
-      <header className="topbar"><div><span className="eyebrow">FENIX / CONTROL PLANE</span><h1>Buonasera, {displayName}.</h1><p>Costruisci software verificabile, mantenendo ogni decisione sotto controllo.</p></div><div className="top-actions"><Status state={coreState} label={coreState==='connected'?'Core connesso':coreState==='checking'?'Verifica sistemi':'Core non disponibile'}/><button className="button secondary" onClick={()=>window.open('/docs','_blank','noopener,noreferrer')}>Documentazione</button></div></header>
-      <div className="home-content"><section className="hero-grid"><div className="composer-card"><span className="section-label">NUOVO PROGETTO</span><h2>Che cosa vuoi portare alla luce?</h2><p>Descrivi il risultato. Prima della build scegli una direzione visiva esplicita.</p><div className="composer"><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Es. Crea un portale clienti con login, fatture e assistenza…" aria-label="Descrivi il progetto" disabled={creatingProject}/><div className="composer-footer"><span>{creatingProject?'Creazione e build in avvio…':'Brief → direzione → piano → build automatico'}</span><button className="button primary" onClick={()=>void createProject()} disabled={creatingProject||!prompt.trim()}>{creatingProject?'Creazione…':'Crea e costruisci'} <ArrowRight/></button></div></div><div className="direction-heading"><span>Direzione visiva</span><small>Decisione registrata nel brief</small></div><div className="direction-grid">{directions.map(d=><button key={d.id} className={`direction-card ${direction===d.id?'selected':''}`} onClick={()=>setDirection(d.id)} aria-pressed={direction===d.id} disabled={creatingProject}><span>{d.kicker}</span><strong>{d.label}</strong><p>{d.description}</p><i>{direction===d.id&&<Check/>}</i></button>)}</div><div className="quick-types">{['Web app','SaaS','Dashboard','Mobile','Agente IA'].map(x=><button key={x} onClick={()=>setPrompt(current=>current.trim()?current:`Crea ${x.toLowerCase()} per `)} disabled={creatingProject}>{x}</button>)}</div></div><aside className="pulse-card"><div className="pulse-mark"><Zap/><span>Segnale operativo</span></div><strong>{totalProgress}%</strong><p>Avanzamento medio dei progetti attivi</p><dl><div><dt>Build attive</dt><dd>{String(stats.activeJobs).padStart(2,'0')}</dd></div><div><dt>Evidence oggi</dt><dd>{stats.evidenceToday}</dd></div><div><dt>Spesa mese</dt><dd>€ {stats.spendMonth.toFixed(2)}</dd></div></dl></aside></section>
-      <section className="projects-section"><div className="section-heading"><div><span className="section-label">WORKSPACE</span><h2>Progetti recenti</h2></div><button className="button quiet">Vedi tutti <ArrowRight/></button></div><div className="project-grid">{projects.slice(0,6).map(p=><button className="project-card" key={p.id} onClick={()=>openProject(p)}><div className="project-index"><span>{p.name.slice(0,1)}</span><em>{p.progress}%</em></div><div className="project-body"><Status state={p.status.toLowerCase()} label={p.status}/><h3>{p.name}</h3><p>{p.description}</p><div className="progress"><i style={{width:`${p.progress}%`}}/></div><small>Aggiornato {new Date(p.updated).toLocaleDateString('it-IT')}<span>Apri <ArrowRight/></span></small></div></button>)}{projects.length===0&&<Empty icon={<Boxes/>} title="Nessun progetto" text="Descrivi il primo prodotto e scegli la sua direzione visiva."/>}</div></section></div>
-    </section>:activeProject&&<section className={`workspace-view mode-${mode} ${!leftOpen?'left-closed':''} ${!rightOpen?'right-closed':''} ${dockOpen?'dock-open':''}`} style={{'--left-panel':`${leftWidth}px`,'--right-panel':`${rightWidth}px`} as React.CSSProperties}>
-      <header className="workspace-topbar"><div className="project-identity"><IconButton label="Torna alla home" onClick={()=>setView('home')}><ArrowLeft/></IconButton><div><span>PROGETTO</span><strong>{activeProject.name}</strong></div><Status state={activeProject.status.toLowerCase()} label={activeProject.status}/></div><div className="workspace-context"><span><GitBranch/>main</span><span className="desktop-only">{pipelineBusy?pipelineStep:`Sessione € ${Number(workspaceData?.usage?.amount??0).toFixed(2)}`}</span></div><div className="workspace-actions"><button className="button secondary desktop-only" onClick={()=>void shareProject()}>Condividi</button><button className="button primary pipeline-button" onClick={()=>void runAutopilot()} disabled={pipelineBusy||workspaceData?.job?.status==='SUCCEEDED'}><Play/>{pipelineBusy?'Costruzione…':workspaceData?.job?.status==='SUCCEEDED'?'Completato':'Completa progetto'}</button><button className="button secondary desktop-only" onClick={openReleaseGate}>Rilascio</button><IconButton label="Menu workspace" onClick={()=>setMobilePanel(mobilePanel==='none'?'chat':'none')}><Menu/></IconButton></div></header>
-      <div className="modebar" aria-label="Modalità workspace">{modes.map(m=>{const I=m.icon;return <button key={m.id} aria-label={m.label} className={mode===m.id?'active':''} onClick={()=>activateMode(m.id)}><I/><span>{m.label}</span></button>})}<div className="panel-controls"><IconButton label="Mostra o nascondi chat" active={leftOpen} onClick={()=>setLeftOpen(v=>!v)}><PanelLeft/></IconButton><IconButton label="Mostra o nascondi inspector" active={rightOpen} onClick={()=>setRightOpen(v=>!v)}><PanelRight/></IconButton><IconButton label="Mostra o nascondi dock" active={dockOpen} onClick={()=>setDockOpen(v=>!v)}><PanelBottom/></IconButton></div></div>
-      <div className="mobile-workspace-nav"><button className={mobilePanel==='chat'?'active':''} onClick={()=>setMobilePanel(mobilePanel==='chat'?'none':'chat')}><PanelLeft/>Chat</button><button className={mobilePanel==='none'?'active':''} onClick={()=>setMobilePanel('none')}><Monitor/>Preview</button><button className={mobilePanel==='inspect'?'active':''} onClick={()=>setMobilePanel(mobilePanel==='inspect'?'none':'inspect')}><PanelRight/>Inspector</button></div>
-      <div className="workspace-grid"><aside className={`conversation-panel ${mobilePanel==='chat'?'mobile-open':''}`}><PanelHeader title="Conversazione" subtitle="Piano · richieste · agenti" close={()=>{setLeftOpen(false);setMobilePanel('none')}}/><div className="scope-summary"><ShieldCheck/><div><strong>Scope corrente</strong><span>{workspaceData?.tasks.length??0} task · produzione protetta</span></div></div><div className="chat-scroll"><div className="user-message">Crea {activeProject.description.toLowerCase()}.</div><div className="fenix-message"><span>F</span><div><strong>Brief iniziale pronto</strong><p>Obiettivi, flussi e limiti restano verificabili durante la build.</p><button className="inline-action" onClick={()=>setBriefOpen(v=>!v)}>{briefOpen?'Nascondi':'Mostra'} brief <ChevronDown/></button></div></div>{briefOpen&&<div className="brief-card"><label>OBIETTIVO · v{workspaceData?.brief?.version??1}</label><p>{workspaceData?.brief?.objective??activeProject.description}</p><div><span>{workspaceData?.tasks.length??0} task</span><span>{workspaceData?.job?.status??'In attesa'}</span><span>€ {Number(workspaceData?.usage?.amount??0).toFixed(2)}</span></div></div>}{chatMessages.map(m=>m.role==='user'?<div className="user-message" key={m.id}>{m.content}</div>:<div className="fenix-message" key={m.id}><span>F</span><div><p>{m.content}</p></div></div>)}</div><div className="chat-composer"><input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void sendChat()}}} placeholder="Chiedi una modifica…" aria-label="Messaggio per FENIX"/><IconButton label="Invia messaggio" onClick={()=>void sendChat()}><Send/></IconButton></div></aside><div className="resize-handle resize-left" role="separator" aria-label="Ridimensiona conversazione" onPointerDown={event=>startResize('left',event)}/>
-        <section className="preview-panel"><div className="preview-toolbar"><div><Status state={workspaceState} label={workspaceState==='connected'?'Preview collegata':workspaceState==='checking'?'Connessione':'Preview non disponibile'}/><span className={`environment ${livePreview?'preview':'mock'}`}>{livePreview?'PREVIEW':'MOCK'}</span></div><div className="device-switcher">{devices.map(d=>{const I=d.icon;return <button key={d.id} className={device===d.id?'active':''} onClick={()=>setDevice(d.id)} title={d.label} aria-label={d.label}><I/><span>{d.short}</span></button>})}</div><div><span className="zoom">{Math.min(100,Math.round(1180/selectedDevice.width*100))}%</span><IconButton label="Acquisisci evidence screenshot" onClick={()=>void inspectVisual()}><PictureIcon/></IconButton>{livePreview?.url&&<a className="icon-button" href={livePreview.url} target="_blank" rel="noreferrer" aria-label="Apri preview in una nuova finestra"><ExternalLink/></a>}</div></div><div className="preview-canvas"><div className="preview-meta"><span>{selectedDevice.label}</span><span>{livePreview?'Sandbox temporanea isolata':'Superficie dimostrativa: nessun runtime attivo'}</span></div><div className="device-frame" style={{'--device-width':`${selectedDevice.width}px`,'--device-ratio':`${selectedDevice.height/selectedDevice.width}`} as React.CSSProperties}>{livePreview?.url?<iframe ref={previewRef} className="runtime-preview" src={livePreview.url} title={`Preview ${activeProject.name}`} sandbox="allow-forms allow-modals allow-popups allow-scripts" referrerPolicy="no-referrer" onLoad={()=>previewRef.current?.contentWindow?.postMessage({type:"fenix:visual-mode",enabled:mode==="visual"},"*")}/>:<MockApp/>}</div>{mode==='compare'&&<BaselinePreview jobId={workspaceData?.job?.id??null} artifactId={visualHistory.find(item=>item.crop_artifact_id)?.crop_artifact_id??null}/>}</div></section><div className="resize-handle resize-right" role="separator" aria-label="Ridimensiona inspector" onPointerDown={event=>startResize('right',event)}/>
-        <aside className={`inspector-panel ${mobilePanel==='inspect'?'mobile-open':''}`}><PanelHeader title={rightTab==='inspect'?'Visual Inspector':'Inspector'} subtitle={mode==='visual'?'Selezione assistita':'Contesto progetto'} close={()=>{setRightOpen(false);setMobilePanel('none')}}/><div className="tabs">{(['inspect','tokens','files','quality','deploy'] as const).map(t=><button key={t} className={rightTab===t?'active':''} onClick={()=>setRightTab(t)}>{t==='inspect'?'Inspect':t==='tokens'?'Tokens':t==='files'?'File':t==='quality'?'Quality':'Deploy'}</button>)}</div>{rightTab==='inspect'&&<div className="inspector-content"><div className="notice"><PictureIcon/><p><strong>{livePreview?'Ispezione runtime reale':'Selezione assistita'}</strong><span>{livePreview?'Selector, screenshot, stile e source mapping verificati dal Visual Worker.':'Il selector viene registrato. Screenshot e source mapping richiedono una preview live.'}</span></p></div><label className="field">Selector CSS<input value={selector} onChange={e=>setSelector(e.target.value)} placeholder="#app .card"/></label><FreezeManager paths={frozenPaths} setPaths={setFrozenPaths} input={freezeInput} setInput={setFreezeInput}/><button className="button primary wide" onClick={()=>void inspectVisual()} disabled={visualBusy||!selector.trim()}>{visualBusy?'Ispezione…':'Ispeziona elemento'}</button>{visualResult&&<div className="result-card"><span>SELEZIONE REGISTRATA</span><strong>{visualResult.sourcePath??selector}</strong><p>{visualResult.sourceLine?`Riga ${visualResult.sourceLine} · `:''}{visualResult.patchable?'Patch localizzata consentita':'Modifica bloccata dalla policy'}</p>{visualResult.cropArtifactId&&<small>Screenshot evidence: {visualResult.cropArtifactId.slice(0,8)}…</small>}</div>}{sourceDraft&&<SourceEditor draft={sourceDraft} setDraft={setSourceDraft} onApply={()=>void applyVisualPatch()} onUndo={()=>void undoVisualPatch()} busy={patchBusy} canUndo={Boolean(recoveryPointId)}/>}</div>}
-          {rightTab==='tokens'&&<DesignTokensEditor tokens={designTokens} setTokens={setDesignTokens} onSave={()=>void saveDesignTokens()} busy={visualBusy}/>}{rightTab==='files'&&<div className="file-list"><div className="inspector-metric"><span>REPO INDEX</span><strong>{workspaceData?.repositoryFiles.length??0}</strong></div>{workspaceData?.repositoryFiles.slice(0,50).map(f=><button key={f.path} title={f.path} onClick={()=>{void readSource(f.path);setRightTab("inspect")}}><FileCode2/><span>{f.path}</span></button>)}{!workspaceData?.repositoryFiles.length&&<Empty icon={<Code2/>} title="Indice non disponibile" text="Collega o genera un repository per vedere i file reali."/>}</div>}{rightTab==='quality'&&<div className="quality-list"><div className="inspector-metric"><span>QUALITY GATE</span><strong>{workspaceData?`${workspaceData.qualityRuns.filter(r=>r.status==='passed').length}/${workspaceData.qualityRuns.length}`:'—'}</strong></div>{workspaceData?.qualityRuns.map(r=><div key={r.id}><span className={`quality-icon ${r.status}`}>{r.status==='passed'?<Check/>:<TestTube2/>}</span><p><strong>{r.kind}</strong><small>{r.status}{r.duration_ms!=null?` · ${r.duration_ms} ms`:''}</small></p></div>)}{!workspaceData?.qualityRuns.length&&<Empty icon={<TestTube2/>} title="Nessun risultato" text="I quality check non sono ancora stati eseguiti."/>}</div>}{rightTab==='deploy'&&<div className="deploy-list"><p className="honesty-note">Sono mostrati solo ambienti registrati dal Control Plane.</p>{workspaceData?.deployments.map(d=><div key={d.id}><span className={`deploy-dot ${d.status}`}/><p><strong>{d.environment} · {d.version}</strong><small>{d.status}</small></p>{d.url&&<a href={d.url} target="_blank" rel="noreferrer">Apri</a>}</div>)}{!workspaceData?.deployments.length&&<Empty icon={<ShieldCheck/>} title="Nessun deploy" text="La produzione richiede gate e approvazione esplicita."/>}</div>}</aside>
-      </div><section className="bottom-dock"><div className="dock-tabs">{(['tasks','tests','console','versions','costs'] as const).map(t=><button key={t} className={dockTab===t?'active':''} onClick={()=>{setDockTab(t);setDockOpen(true)}}>{t}</button>)}<IconButton label="Chiudi dock" onClick={()=>setDockOpen(false)}><X/></IconButton></div><div className="dock-body">{dockTab==='tasks'&&workspaceData?.tasks.slice(0,8).map(t=><div key={t.id}><span>{t.phase}</span><strong>{t.title}</strong><Status state={t.status} label={t.status}/></div>)}{dockTab==='tests'&&<p>{workspaceData?.qualityRuns.length??0} esecuzioni registrate. Apri Quality per i dettagli.</p>}{dockTab==='console'&&workspaceData?.events.slice(-6).map(e=><code key={e.id}>{new Date(e.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})} {e.human_message}</code>)}{dockTab==='versions'&&(recoveryPoints.length?recoveryPoints.slice(0,8).map(point=><div key={point.id}><span>{new Date(point.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}</span><strong>{point.source_revision}</strong><Status state="ready" label="recovery"/></div>):<p>Nessuna recovery point disponibile per questo job.</p>)}{dockTab==='costs'&&<p>Spesa sessione: € {Number(workspaceData?.usage?.amount??0).toFixed(2)} · budget job: € {Number(workspaceData?.job?.budget_limit??0).toFixed(2)}</p>}</div></section>
-    </section>}{toast&&<div className="toast" role="status">{toast}</div>}</main>;
+  return (
+    <main className="builder-shell">
+      <header className="builder-topbar">
+        <div>
+          <button
+            className="icon-button"
+            onClick={() => setScreen("home")}
+            aria-label="Torna ai progetti"
+          >
+            <ArrowLeft />
+          </button>
+          <a className="fenix-brand compact" href="#">
+            <span>F</span>FENIX
+          </a>
+          <i />
+          <strong>{activeProject?.name}</strong>
+          <span className={`build-state ${building ? "working" : "ready"}`}>
+            {building ? <LoaderCircle className="spin" /> : <Check />}
+            {building
+              ? "Agenti al lavoro"
+              : livePreview
+                ? "Pronto"
+                : "In attesa"}
+          </span>
+        </div>
+        <div>
+          <span className="progress-copy">
+            {completedTasks}/{workspace?.tasks.length ?? 11} attività
+          </span>
+          <div className="top-progress">
+            <i style={{ width: `${activeProject?.progress ?? 0}%` }} />
+          </div>
+          <button
+            className="publish-button"
+            onClick={() =>
+              livePreview
+                ? window.open(livePreview, "_blank", "noopener,noreferrer")
+                : notify("La preview sarà disponibile appena termina la build.")
+            }
+          >
+            <ExternalLink />
+            Apri preview
+          </button>
+        </div>
+      </header>
+      <div className="builder-body">
+        <aside className="agent-panel">
+          <div className="agent-heading">
+            <span>
+              <Sparkles />
+              FENIX Agent
+            </span>
+            <small>
+              {building
+                ? "Sta costruendo il tuo prodotto"
+                : "Pronto per una nuova modifica"}
+            </small>
+          </div>
+          <div className="conversation">
+            {messages.map((message) => (
+              <div key={message.id} className={`bubble ${message.role}`}>
+                <span>{message.role === "assistant" ? "F" : "Tu"}</span>
+                <p>{message.content}</p>
+              </div>
+            ))}
+            <div className="agent-summary">
+              <span className="agent-avatar">F</span>
+              <div>
+                <strong>{building ? buildLabel : "Prototipo pronto"}</strong>
+                <p>
+                  {building
+                    ? "Il team sta lavorando nel sandbox. Puoi seguire ogni passaggio qui sotto."
+                    : "Prova il risultato nella preview. Scrivi una modifica e gli agenti creeranno una nuova versione."}
+                </p>
+              </div>
+            </div>
+            <section className="agent-timeline">
+              <header>
+                <span>Attività degli agenti</span>
+                <small>
+                  {completedTasks}/{workspace?.tasks.length ?? 11}
+                </small>
+              </header>
+              {workspace?.tasks.map((task) => {
+                const agent = phaseAgents[task.phase] ?? {
+                  name: "FENIX",
+                  role: "Agent",
+                };
+                const active =
+                  task.status === "running" || task.id === currentTask?.id;
+                return (
+                  <article
+                    key={task.id}
+                    className={`${task.status} ${active ? "active" : ""}`}
+                  >
+                    <span className="task-state">
+                      {task.status === "completed" ? (
+                        <Check />
+                      ) : active ? (
+                        <LoaderCircle className="spin" />
+                      ) : (
+                        <Circle />
+                      )}
+                    </span>
+                    <div>
+                      <strong>
+                        {agent.name}
+                        <em>{agent.role}</em>
+                      </strong>
+                      <p>{task.title}</p>
+                    </div>
+                    {task.status === "completed" && <small>Fatto</small>}
+                  </article>
+                );
+              })}
+              {!workspace && (
+                <div className="timeline-loading">
+                  <LoaderCircle className="spin" />
+                  Preparazione del piano…
+                </div>
+              )}
+            </section>
+          </div>
+          <div className="revision-composer">
+            <textarea
+              value={revision}
+              onChange={(event) => setRevision(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void requestRevision();
+                }
+              }}
+              placeholder="Chiedi una modifica al prototipo…"
+              disabled={building}
+            />
+            <div>
+              <span>
+                {building
+                  ? "Attendi la fine della build"
+                  : "Gli agenti creeranno una nuova versione"}
+              </span>
+              <button
+                className="send-button"
+                onClick={() => void requestRevision()}
+                disabled={building || !revision.trim()}
+              >
+                <Send />
+              </button>
+            </div>
+          </div>
+        </aside>
+        <section className="product-panel">
+          <div className="product-toolbar">
+            <div className="preview-tabs">
+              <button
+                className={previewTab === "preview" ? "active" : ""}
+                onClick={() => setPreviewTab("preview")}
+              >
+                <Monitor />
+                Preview
+              </button>
+              <button
+                className={previewTab === "code" ? "active" : ""}
+                onClick={() => setPreviewTab("code")}
+              >
+                <Code2 />
+                Codice
+              </button>
+              <button
+                className={previewTab === "tests" ? "active" : ""}
+                onClick={() => setPreviewTab("tests")}
+              >
+                <TestTube2 />
+                Test
+              </button>
+            </div>
+            <div className="preview-actions">
+              <button
+                className={device === "desktop" ? "active" : ""}
+                onClick={() => setDevice("desktop")}
+                title="Desktop"
+              >
+                <Monitor />
+              </button>
+              <button
+                className={device === "mobile" ? "active" : ""}
+                onClick={() => setDevice("mobile")}
+                title="Mobile"
+              >
+                <Smartphone />
+              </button>
+              <button
+                onClick={() =>
+                  activeProject && void refreshWorkspace(activeProject.id)
+                }
+                title="Aggiorna"
+              >
+                <RefreshCw />
+              </button>
+              {livePreview && (
+                <a
+                  href={livePreview}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Apri in una nuova finestra"
+                >
+                  <ExternalLink />
+                </a>
+              )}
+            </div>
+          </div>
+          {previewTab === "preview" && (
+            <div className={`product-canvas ${device}`}>
+              {livePreview ? (
+                <div className="browser-frame">
+                  <div className="browser-chrome">
+                    <i />
+                    <i />
+                    <i />
+                    <span>
+                      {livePreview.replace(/^https?:\/\//, "").slice(0, 54)}
+                    </span>
+                  </div>
+                  <iframe
+                    src={livePreview}
+                    title={`Preview ${activeProject?.name}`}
+                    sandbox="allow-forms allow-modals allow-popups allow-scripts"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              ) : (
+                <div className="building-preview">
+                  <div className="build-orbit">
+                    <span>F</span>
+                    <i />
+                    <i />
+                    <i />
+                  </div>
+                  <h2>{buildLabel}</h2>
+                  <p>
+                    La preview apparirà qui appena il Preview Agent avrà avviato
+                    il prototipo.
+                  </p>
+                  <div className="skeleton-window">
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {previewTab === "code" && (
+            <div className="code-surface">
+              <header>
+                <div>
+                  <FileCode2 />
+                  <span>Codice generato</span>
+                </div>
+                <small>{workspace?.repositoryFiles.length ?? 0} file</small>
+              </header>
+              <div className="file-browser">
+                <aside>
+                  {workspace?.repositoryFiles.map((file) => (
+                    <button key={file.path}>
+                      <FileCode2 />
+                      {file.path}
+                    </button>
+                  ))}
+                </aside>
+                <section>
+                  <div className="code-empty">
+                    <Code2 />
+                    <strong>Codice reale, progetto tuo</strong>
+                    <p>
+                      I file prodotti dagli agenti sono indicizzati e inclusi
+                      nello snapshot esportabile.
+                    </p>
+                  </div>
+                </section>
+              </div>
+            </div>
+          )}
+          {previewTab === "tests" && (
+            <div className="test-surface">
+              <header>
+                <div>
+                  <ShieldCheck />
+                  <span>Verifiche indipendenti</span>
+                </div>
+                <strong>
+                  {workspace?.qualityRuns.filter(
+                    (run) => run.status === "passed",
+                  ).length ?? 0}
+                  /{workspace?.qualityRuns.length ?? 0} superate
+                </strong>
+              </header>
+              <div>
+                {workspace?.qualityRuns.map((run) => (
+                  <article key={run.id}>
+                    <span className={run.status}>
+                      <Check />
+                    </span>
+                    <div>
+                      <strong>{run.kind}</strong>
+                      <p>{run.summary}</p>
+                    </div>
+                    <small>{run.status}</small>
+                  </article>
+                ))}
+                {!workspace?.qualityRuns.length && (
+                  <div className="test-empty">
+                    <TestTube2 />
+                    <p>
+                      I risultati appariranno quando QA e Security Agent
+                      inizieranno i test.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
+    </main>
+  );
 }
-
-function FreezeManager({paths,setPaths,input,setInput}:{paths:string[];setPaths:React.Dispatch<React.SetStateAction<string[]>>;input:string;setInput:React.Dispatch<React.SetStateAction<string>>}){const add=()=>{const path=input.trim().replace(/^\/+/, '');if(!path||path.includes('..')||paths.includes(path))return;setPaths(current=>[...current,path]);setInput('');};return <div className="freeze-box"><div><span>Scope protetto</span><button onClick={()=>setPaths([])}>Rimuovi freeze sessione</button></div><div className="freeze-add"><input value={input} onChange={event=>setInput(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();add()}}} placeholder="src/components/Header.tsx" aria-label="Percorso da proteggere"/><button onClick={add} aria-label="Aggiungi freeze"><Plus/></button></div>{paths.length?<div className="freeze-list">{paths.map(path=><button key={path} onClick={()=>setPaths(current=>current.filter(item=>item!==path))} title="Rimuovi freeze"><ShieldCheck/><span>{path}</span><X/></button>)}</div>:<p>Nessun freeze aggiuntivo; restano attive le protezioni server immutabili.</p>}</div>}
-function DesignTokensEditor({tokens,setTokens,onSave,busy}:{tokens:Record<string,string>;setTokens:React.Dispatch<React.SetStateAction<Record<string,string>>>;onSave:()=>void;busy:boolean}){return <div className="token-editor"><div className="notice"><Settings/><p><strong>Design System Generator</strong><span>Token semantici versionati. Il salvataggio non applica automaticamente modifiche ai file.</span></p></div>{Object.entries(tokens).map(([key,value])=><label className="field" key={key}>{key}<input value={value} onChange={event=>setTokens(current=>({...current,[key]:event.target.value}))}/></label>)}<button className="button primary wide" onClick={onSave} disabled={busy}>{busy?'Salvataggio…':'Salva nuova versione'}</button></div>}
-function SourceEditor({draft,setDraft,onApply,onUndo,busy,canUndo}:{draft:SourceDraft;setDraft:React.Dispatch<React.SetStateAction<SourceDraft|null>>;onApply:()=>void;onUndo:()=>void;busy:boolean;canUndo:boolean}){return <div className="source-editor"><div><span>PATCH LOCALE</span><strong>{draft.path}</strong></div><textarea aria-label={`Modifica ${draft.path}`} value={draft.content} onChange={event=>setDraft(current=>current?{...current,content:event.target.value}:current)} spellCheck={false}/><div className="source-actions"><button className="button secondary" onClick={onUndo} disabled={!canUndo||busy}><RotateCcw/>Undo</button><button className="button primary" onClick={onApply} disabled={busy||draft.content===draft.original}>{busy?'Operazione…':'Applica patch'}</button></div></div>}
-function BaselinePreview({jobId,artifactId}:{jobId:string|null;artifactId:string|null}){return <div className="baseline-preview"><div className="preview-meta"><span>BASELINE EVIDENCE</span><span>{artifactId?'Artefatto verificato':'Nessuna baseline acquisita'}</span></div>{jobId&&artifactId?<NextImage unoptimized width={1280} height={800} src={`/api/jobs/${jobId}/artifacts?artifactId=${encodeURIComponent(artifactId)}`} alt="Baseline visuale precedente"/>:<Empty icon={<Columns3/>} title="Baseline non disponibile" text="Esegui Inspect su una preview live per acquisire una baseline confrontabile."/>}</div>}
-function PanelHeader({title,subtitle,close}:{title:string;subtitle:string;close:()=>void}){return <div className="panel-header"><div><strong>{title}</strong><span>{subtitle}</span></div><IconButton label={`Chiudi ${title}`} onClick={close}><X/></IconButton></div>}
-function Empty({icon,title,text}:{icon:React.ReactNode;title:string;text:string}){return <div className="empty-state compact">{icon}<strong>{title}</strong><p>{text}</p></div>}
-function MockApp(){return <div className="mock-app"><aside><b>O</b><i/><i/><i/><i/></aside><div className="mock-main"><header><div><small>OVERVIEW</small><h3>Buongiorno, team.</h3></div><span><Plus/>Nuovo cliente</span></header><div className="mock-stats">{[['RICAVI','€ 48.240','+12,4%'],['PROGETTI','24','6 attivi'],['CLIENTI','128','+8 questo mese']].map(x=><article key={x[0]}><small>{x[0]}</small><strong>{x[1]}</strong><em>{x[2]}</em></article>)}</div><div className="mock-chart"><div><small>ANDAMENTO</small><strong>Ricavi mensili</strong></div><div className="bars">{[36,54,43,68,61,82,76,92].map((h,i)=><i key={i} style={{height:`${h}%`}}/>)}</div></div><div className="mock-table"><span>Attività recenti</span>{['Studio Delta','Forma Labs','Nord&Co'].map((n,i)=><div key={n}><b>{n}</b><i/><em>{['€ 4.200','€ 2.850','€ 6.100'][i]}</em></div>)}</div></div></div>}

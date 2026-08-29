@@ -38,6 +38,39 @@ async function runQuality(directory: string, mode: string) {
   });
 }
 
+async function runWebsiteContact(directory: string) {
+  const port = 8192;
+  const child = spawn(process.execPath, ['server.mjs'], {
+    cwd: directory,
+    env: { ...process.env, PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  try {
+    let ready = false;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      try {
+        ready = (await fetch(`http://127.0.0.1:${port}/api/health`)).ok;
+        if (ready) break;
+      } catch {}
+    }
+    assert.equal(ready, true, 'generated website server did not start');
+    const response = await fetch(`http://127.0.0.1:${port}/api/contact`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Ada Lovelace',
+        email: 'ada@example.test',
+        message: 'Vorrei avviare un nuovo progetto.',
+      }),
+    });
+    assert.equal(response.status, 201);
+    assert.equal((await response.json() as { ok?: boolean }).ok, true);
+  } finally {
+    child.kill('SIGTERM');
+  }
+}
+
 test('different briefs generate materially different full-stack applications', async () => {
   const crm = await materialize('CRM vendite per gestire clienti, lead, valore e stato delle opportunità');
   const booking = await materialize('Sistema di prenotazioni per uno studio con clienti, date e conferme');
@@ -67,6 +100,24 @@ test('generated application passes auth, database, list and create scenario', as
     assert.match(output, /"status":"passed"/);
     assert.match(output, /"auth"/);
     assert.match(output, /"create"/);
+  } finally {
+    await rm(generated.directory, { recursive: true, force: true });
+  }
+});
+
+test('website briefs generate a public site with a persisted contact flow', async () => {
+  const generated = await materialize('Sito web premium per uno studio creativo con servizi, portfolio e modulo contatti');
+  try {
+    assert.equal(generated.brief.appType, 'website');
+    const html = generated.files.find((file) => file.path === 'public/index.html')?.content ?? '';
+    const app = generated.files.find((file) => file.path === 'public/app.js')?.content ?? '';
+    const server = generated.files.find((file) => file.path === 'server.mjs')?.content ?? '';
+    assert.match(html, /id="contact-form"/);
+    assert.match(html, /Hai un progetto in mente/);
+    assert.match(app, /\/api\/contact/);
+    assert.match(server, /\/api\/contact/);
+    for (const mode of ['typecheck', 'lint', 'unit', 'build']) await runQuality(generated.directory, mode);
+    await runWebsiteContact(generated.directory);
   } finally {
     await rm(generated.directory, { recursive: true, force: true });
   }
