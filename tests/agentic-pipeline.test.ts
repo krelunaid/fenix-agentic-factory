@@ -6,6 +6,7 @@ import {
   classifyBuildComplexity,
   createHybridFilePlan,
   fallbackExperienceFiles,
+  normalizeGeneratedFileContent,
   parseAgenticPatchSet,
   parseQaDiagnosis,
   parseRepairSet,
@@ -47,6 +48,12 @@ test('schema-bound Builder accepts only the two planned executable files', () =>
   const patch = parseAgenticPatchSet(validCandidate(), plan, classifyBuildComplexity(brief));
   assert.deepEqual(patch.patches.map((item) => item.path), ['public/experience.css', 'public/experience.js']);
   assert.equal(patch.attempt, 1);
+});
+
+test('single-file AI passes accept raw or fenced source without JSON escaping', () => {
+  assert.match(normalizeGeneratedFileContent('```css\n:root{color:red}\n```', 'public/experience.css'), /prefers-reduced-motion/);
+  assert.match(normalizeGeneratedFileContent("document.body.dataset.ready='1'", 'public/experience.js'), /fenix:experience-ready/);
+  assert.throws(() => normalizeGeneratedFileContent('   ', 'public/experience.js'), /file_empty/);
 });
 
 test('sanitize gate rejects traversal, external code, secrets and unsafe execution', () => {

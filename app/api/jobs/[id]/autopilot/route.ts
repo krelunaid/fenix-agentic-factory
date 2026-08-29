@@ -4,7 +4,7 @@ import { canOperate, requireJobAccess } from '../../../../../lib/core-access';
 import { createSandboxClient } from '../../../../../lib/build-plane/sandbox-client';
 import { deriveSandboxId } from '../../../../../lib/build-plane/sandbox-id';
 import { buildRepositoryIndex } from '../../../../../lib/build-plane/repo-index';
-import { extractJsonCandidate, generateAgenticApplication, inferProductBrief, productArchitectPrompt, softwareArchitectPlan, visualDesignerPrompt } from '../../../../../lib/build-plane/agentic-generator';
+import { extractJsonCandidate, extractManagedText, generateAgenticApplication, inferProductBrief, productArchitectPrompt, softwareArchitectPlan, visualDesignerPrompt } from '../../../../../lib/build-plane/agentic-generator';
 import {
   applyPatchSet,
   attachAgenticExperience,
@@ -16,6 +16,7 @@ import {
   createUxBlueprint,
   diagnosisPrompt,
   fallbackExperienceFiles,
+  normalizeGeneratedFileContent,
   parseAgenticPatchSet,
   parseQaDiagnosis,
   parseRepairSet,
@@ -274,9 +275,8 @@ async function executeTask(context: ExecutionContext) {
             prompt: builderFilePrompt(brief, entry),
             maxTokens: 2_048,
           });
-          const candidate = extractJsonCandidate(result);
-          if (!candidate || typeof candidate !== 'object') throw new Error(`agentic_file_contract_invalid:${entry.path}`);
-          generatedPatches.push(candidate);
+          const content = normalizeGeneratedFileContent(extractManagedText(result), entry.path);
+          generatedPatches.push({ path: entry.path, purpose: entry.role, content });
           await recordBuildEvent(context, 'builder.file.generated', 'info', `Codice AI ricevuto per ${entry.path}; in attesa del commit atomico`);
         }
         builderPatch = parseAgenticPatchSet({ rationale: 'Passaggi AI separati validati e riuniti atomicamente', patches: generatedPatches }, filePlan, complexity, 1);

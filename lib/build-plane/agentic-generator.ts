@@ -127,14 +127,18 @@ export function softwareArchitectPlan(brief: ProductBrief) {
 }
 
 export function extractJsonCandidate(result: unknown) {
-  const outer = result && typeof result === 'object' ? result as Record<string, unknown> : {};
-  const provider = outer.result && typeof outer.result === 'object' ? outer.result as Record<string, unknown> : {};
-  const response = typeof provider.response === 'string' ? provider.response : typeof outer.response === 'string' ? outer.response : '';
+  const response = extractManagedText(result);
   const fenced = response.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1] ?? response;
   const start = fenced.indexOf('{');
   const end = fenced.lastIndexOf('}');
   if (start < 0 || end <= start) return null;
   try { return JSON.parse(fenced.slice(start, end + 1)); } catch { return null; }
+}
+
+export function extractManagedText(result: unknown) {
+  const outer = result && typeof result === 'object' ? result as Record<string, unknown> : {};
+  const provider = outer.result && typeof outer.result === 'object' ? outer.result as Record<string, unknown> : {};
+  return typeof provider.response === 'string' ? provider.response : typeof outer.response === 'string' ? outer.response : typeof outer.result === 'string' ? outer.result : '';
 }
 
 function escapeHtml(value: string) {
