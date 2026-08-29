@@ -16,11 +16,12 @@
 - **V3:** explicit Preview/Mock environment, sandbox honesty, runtime new-window action and connection state.
 - **V4:** six viewport controls and responsive workspace drawers that keep Chat, Preview and Inspector reachable on mobile.
 - **V5:** three visual directions before project creation and audited server persistence.
-- **V6:** Visual Edit mode, selector-based inspection, real Visual Worker integration, source/patchability result and evidence artifact ID.
-- **V7:** session freeze persisted in visual-selection constraints and enforced by the patch API in addition to immutable protected paths.
-- **V8:** runtime inspect captures screenshot evidence; a supplied baseline is diffed by the existing Visual Worker.
-- **V9:** recovery API remains fail-closed: rollback is planned only across valid ancestors and always requires approval.
-- **V10:** lint, typecheck, test, production build and six-size screenshot QA.
+- **V6:** Visual Edit mode with a preview bridge installed in generated apps, hover outline, direct DOM selection, stable selector and optional source metadata.
+- **V7:** real source reads, editable source panel, hash-guarded patching, session freeze persisted in visual constraints and protected paths enforced by the patch API.
+- **V8:** screenshot evidence and baseline diff through the Visual Worker, plus a two-up Compare workspace that renders only stored artifacts.
+- **V9:** every successful patch stores a durable pre-change snapshot and recovery point; Undo performs a server-side rollback and requires approval when it would delete data.
+- **V10:** operational Build, Focus, Visual, Debug, Compare and Mobile Studio modes; token versioning, freeze management, release gate, recovery history and product guide.
+- **V11:** lint, typecheck, production build, 25 constitution checks, a ten-product black-box challenge and responsive browser QA.
 
 ## Acceptance summary
 
@@ -36,18 +37,22 @@
 | Mobile access to chat, preview and inspector | PASS |
 | Environment honesty (Preview vs Mock) | PASS |
 | Visual selection stored by API | PASS |
+| Preview bridge and direct DOM selection | PASS |
+| Source read and hash-guarded patch | PASS |
 | Freeze enforced server-side | PASS |
+| Durable patch snapshot and executable Undo | PASS |
 | Destructive rollback requires approval | PASS |
 | TypeScript | PASS |
 | ESLint | PASS |
-| Automated policy tests | PASS — 16/16 |
+| Automated tests | PASS — 42/42 |
+| Ten-product black-box challenge | PASS — 10 distinct structures |
 | Production build | PASS |
 
 ## Capability boundaries
 
-- Direct hover-to-source inside arbitrary cross-origin preview applications still requires the generated application to install the FENIX preview bridge. Until then, Visual Edit uses a real CSS selector workflow and labels it “assisted”.
+- Direct hover-to-source works for newly generated applications because their template installs the FENIX preview bridge. Imported or pre-existing applications must install the same bridge before direct DOM selection is available.
 - A visual diff is produced only when both a live preview and a valid baseline artifact exist. The UI never fabricates a diff.
-- Rollback is never executed from an empty state; recovery points and approval must already exist.
+- Undo is available after a successful FENIX patch has created a recovery point. A rollback that removes a newly created file remains approval-gated.
 
 ## Evidence
 

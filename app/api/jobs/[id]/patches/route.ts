@@ -15,6 +15,13 @@ async function sha256(content: string) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+function toBase64(content: string) {
+  const bytes = new TextEncoder().encode(content);
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  return { bytes, base64: btoa(binary) };
+}
+
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const access = await requireJobAccess(id);
@@ -120,6 +127,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   const now = Date.now();
   const patchId = crypto.randomUUID();
+  const snapshotJson = JSON.stringify({
+    format: 'fenix-patch-snapshot-v1',
+    patchId,
+    files: operations.map((operation) => ({ path: operation.path, existed: operation.operation !== 'create', content: operation.operation === 'create' ? null : originals.get(operation.path) ?? '' })),
+  });
+  const snapshot = toBase64(snapshotJson);
+  const snapshotPersistable = snapshot.bytes.byteLength <= 750_000;
+  const snapshotArtifactId = snapshotPersistable ? crypto.randomUUID() : null;
+  const recoveryPointId = snapshotPersistable ? crypto.randomUUID() : null;
+  const parentRecovery = snapshotPersistable ? await env.DB.prepare('SELECT id FROM recovery_points WHERE job_id=? ORDER BY created_at DESC LIMIT 1').bind(id).first<{ id: string }>() : null;
   const statements = operations.map((operation) => {
     if (operation.operation === 'delete') return env.DB.prepare('DELETE FROM repository_files WHERE repository_id=? AND path=?').bind(repository.id, operation.path);
     const content = contents.get(operation.path) ?? '';
@@ -127,11 +144,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return env.DB.prepare('INSERT INTO repository_files (repository_id,path,sha256,byte_size,language,generated,indexed_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(repository_id,path) DO UPDATE SET sha256=excluded.sha256,byte_size=excluded.byte_size,language=excluded.language,generated=excluded.generated,indexed_at=excluded.indexed_at').bind(repository.id, indexed.path, indexed.sha256, indexed.byteSize, indexed.language, indexed.generated ? 1 : 0, now);
   });
   statements.push(env.DB.prepare('INSERT INTO audit_events (id,organization_id,actor_user_id,action,resource_type,resource_id,payload_json,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(patchId, access.job.organization_id, access.user.userId, 'patch.apply', 'job', id, JSON.stringify({ operations, approvalId: typeof input.approvalId === 'string' ? input.approvalId : null }), now));
+  if (snapshotArtifactId && recoveryPointId) {
+    statements.push(
+      env.DB.prepare('INSERT INTO artifacts (id,project_id,job_id,task_id,kind,storage_key,sha256,byte_size,media_type,created_at) VALUES (?,?,?,NULL,?,?,?,?,?,?)').bind(snapshotArtifactId, access.job.project_id, id, `${access.job.organization_id}/${access.job.project_id}/${id}/recovery/${snapshotArtifactId}.json`, await sha256(snapshotJson), snapshot.bytes.byteLength, 'application/json', now),
+      env.DB.prepare('INSERT INTO artifact_blobs (artifact_id,base64_data,created_at) VALUES (?,?,?)').bind(snapshotArtifactId, snapshot.base64, now),
+      env.DB.prepare('INSERT INTO recovery_points (id,project_id,job_id,parent_id,source_revision,artifact_id,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(recoveryPointId, access.job.project_id, id, parentRecovery?.id ?? null, `patch:${patchId}`, snapshotArtifactId, access.user.userId, now),
+    );
+  }
   try {
     await env.DB.batch(statements);
   } catch {
     const rollbackFailures = await rollbackApplied();
     return NextResponse.json({ error: 'patch_persistence_failed', rollbackComplete: rollbackFailures.length === 0, rollbackFailures }, { status: 500 });
   }
-  return NextResponse.json({ id: patchId, status: 'applied', operations, appliedAt: now }, { status: 201 });
+  return NextResponse.json({ id: patchId, status: 'applied', operations, appliedAt: now, recoveryPointId, recoveryPersistence: recoveryPointId ? 'd1_bounded' : 'snapshot_too_large' }, { status: 201 });
 }

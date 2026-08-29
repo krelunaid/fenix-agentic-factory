@@ -22,13 +22,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!access) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (!canOperate(access.job.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   if (!env.SANDBOX_WORKER_URL || !env.SANDBOX_CONTROL_TOKEN) return NextResponse.json({ error: 'sandbox_provider_not_configured' }, { status: 503 });
-  const input = await request.json().catch(() => null) as { action?: string; command?: SandboxCommand; port?: number; processId?: string } | null;
+  const input = await request.json().catch(() => null) as { action?: string; command?: SandboxCommand; port?: number; processId?: string; path?: string } | null;
   const scope = { organizationId: access.job.organization_id, projectId: access.job.project_id, jobId: id };
   const sandboxId = await deriveSandboxId(scope);
   const client = createSandboxClient(env.SANDBOX_WORKER_URL, env.SANDBOX_CONTROL_TOKEN);
   const now = Date.now();
 
   try {
+    if (input?.action === 'read-file' && typeof input.path === 'string') {
+      const normalized = input.path.replace(/^\/+/, '');
+      if (!normalized || normalized.includes('..') || normalized.length > 500) return NextResponse.json({ error: 'invalid_path' }, { status: 400 });
+      const repository = await env.DB.prepare('SELECT r.id,f.sha256 FROM repositories r JOIN repository_files f ON f.repository_id=r.id WHERE r.project_id=? AND f.path=?').bind(access.job.project_id, normalized).first<{ id: string; sha256: string }>();
+      if (!repository) return NextResponse.json({ error: 'indexed_file_required' }, { status: 404 });
+      const file = await client.readFile(scope, `/workspace/${normalized}`);
+      if (new TextEncoder().encode(file.content).byteLength > 500_000) return NextResponse.json({ error: 'file_too_large_for_visual_editor' }, { status: 413 });
+      return NextResponse.json({ path: normalized, content: file.content, sha256: repository.sha256 });
+    }
     if (input?.action === 'exec' && input.command) {
       const result = await client.exec(scope, input.command);
       await env.DB.prepare("INSERT INTO sandbox_sessions (id,project_id,job_id,provider,provider_ref,status,constraints_json,lease_expires_at,created_at,updated_at) VALUES (?,?,?,?,?,'ready',?,?,?,?) ON CONFLICT(id) DO UPDATE SET status='ready',updated_at=excluded.updated_at,lease_expires_at=excluded.lease_expires_at")
