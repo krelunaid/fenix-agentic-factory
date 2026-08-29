@@ -9,6 +9,7 @@ import {
   applyPatchSet,
   attachAgenticExperience,
   builderFilePrompt,
+  builderSyntaxRepairPrompt,
   classifyBuildComplexity,
   createArchitectureContract,
   createHybridFilePlan,
@@ -260,6 +261,7 @@ async function executeTask(context: ExecutionContext) {
     let generationMode: 'hybrid-agentic' | 'rescue' = 'rescue';
     let builderPatch: ReturnType<typeof parseAgenticPatchSet> | null = null;
     let fallbackReason: string | null = null;
+    let aiPasses = 0;
 
     await createArtifact(context, 'agentic_file_plan', JSON.stringify({ complexity, filePlan }));
     await recordBuildEvent(context, 'builder.plan.ready', 'info', `Piano Builder ${complexity.tier}: ${filePlan.files.length} file AI autorizzati`);
@@ -275,11 +277,36 @@ async function executeTask(context: ExecutionContext) {
             prompt: builderFilePrompt(brief, entry),
             maxTokens: 2_048,
           });
+          aiPasses += 1;
           const content = normalizeGeneratedFileContent(extractManagedText(result), entry.path);
           generatedPatches.push({ path: entry.path, purpose: entry.role, content });
           await recordBuildEvent(context, 'builder.file.generated', 'info', `Codice AI ricevuto per ${entry.path}; in attesa del commit atomico`);
         }
         builderPatch = parseAgenticPatchSet({ rationale: 'Passaggi AI separati validati e riuniti atomicamente', patches: generatedPatches }, filePlan, complexity, 1);
+        const jsEntry = filePlan.files.find((entry) => entry.path.endsWith('.js'))!;
+        const jsPatchIndex = generatedPatches.findIndex((candidate) => (candidate as { path?: string }).path === jsEntry.path);
+        const initialJs = builderPatch.patches.find((patch) => patch.path === jsEntry.path)!;
+        await writeFilesVerified(sandbox, scope, [{ path: 'scripts/agentic-candidate.js', content: initialJs.content }]);
+        let syntax = await sandbox.exec(scope, { executable: 'node', args: ['--check', 'scripts/agentic-candidate.js'], cwd: '/workspace', timeoutMs: 60_000 });
+        if (!syntax.success && aiPasses < complexity.maxAiCalls) {
+          await recordBuildEvent(context, 'builder.syntax.repairing', 'warning', 'Il candidato JavaScript non passa il parser: avviata una correzione AI mirata');
+          const repaired = await invokeManagedAI(env.AI_WORKER_URL, env.AI_CONTROL_TOKEN, {
+            organizationId: access.job.organization_id,
+            projectId: access.job.project_id,
+            requestId: crypto.randomUUID(),
+            capability: 'text',
+            prompt: builderSyntaxRepairPrompt(brief, jsEntry, initialJs.content, syntax.stderr || syntax.stdout),
+            maxTokens: 2_048,
+          });
+          aiPasses += 1;
+          generatedPatches[jsPatchIndex] = { path: jsEntry.path, purpose: jsEntry.role, content: normalizeGeneratedFileContent(extractManagedText(repaired), jsEntry.path) };
+          builderPatch = parseAgenticPatchSet({ rationale: 'Passaggi AI separati con riparazione sintattica validati atomicamente', patches: generatedPatches }, filePlan, complexity, 2);
+          const repairedJs = builderPatch.patches.find((patch) => patch.path === jsEntry.path)!;
+          await writeFilesVerified(sandbox, scope, [{ path: 'scripts/agentic-candidate.js', content: repairedJs.content }]);
+          syntax = await sandbox.exec(scope, { executable: 'node', args: ['--check', 'scripts/agentic-candidate.js'], cwd: '/workspace', timeoutMs: 60_000 });
+          if (syntax.success) await recordBuildEvent(context, 'builder.syntax.repaired', 'info', 'JavaScript AI corretto e verificato con node --check');
+        }
+        if (!syntax.success) throw new Error(`agentic_javascript_syntax:${(syntax.stderr || syntax.stdout).slice(-600)}`);
         files = attachAgenticExperience(scaffold, builderPatch.patches.map((patch) => ({ path: patch.path, content: patch.content })), 'hybrid-agentic');
         generationMode = 'hybrid-agentic';
         await createArtifact(context, 'agentic_patch_set', JSON.stringify(builderPatch));
@@ -303,7 +330,7 @@ async function executeTask(context: ExecutionContext) {
     await writeFilesVerified(sandbox, scope, files);
     await recordBuildEvent(context, 'preview.updated', 'info', `Preview aggiornata con modalità ${generationMode}`);
     const repository = await persistRepositoryState(context, files);
-    const bundle = await createArtifact(context, 'generated_source_bundle', JSON.stringify({ format: 'fenix-durable-preview-v2', productBrief: brief, files, generationMode, complexity, filePlan, passes: builderPatch?.patches.length ?? 0, repairAttempts: 0 } satisfies SourceBundle));
+    const bundle = await createArtifact(context, 'generated_source_bundle', JSON.stringify({ format: 'fenix-durable-preview-v2', productBrief: brief, files, generationMode, complexity, filePlan, passes: aiPasses, repairAttempts: 0 } satisfies SourceBundle));
     return createArtifact(context, 'generated_source_manifest', JSON.stringify({ generator: 'fenix-agentic-web@4', productBrief: brief, generationMode, fallbackReason, complexity, filePlan, headRevision: repository.headRevision, bundleId: bundle.id, files: repository.files }));
   }
 

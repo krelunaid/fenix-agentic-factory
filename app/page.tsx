@@ -129,6 +129,7 @@ export default function Home() {
   const [previewTab, setPreviewTab] = useState<PreviewTab>("preview");
   const [device, setDevice] = useState<Device>("desktop");
   const [toast, setToast] = useState("");
+  const [buildError, setBuildError] = useState("");
   const busyRef = useRef(false);
   const previewFrameRef = useRef<HTMLIFrameElement | null>(null);
   const livePreview = useMemo(
@@ -139,10 +140,19 @@ export default function Home() {
   );
   const completedTasks =
     workspace?.tasks.filter((task) => task.status === "completed").length ?? 0;
+  const pipelineComplete = Boolean(
+    workspace?.job?.status === "SUCCEEDED" &&
+      workspace.tasks.length > 0 &&
+      completedTasks === workspace.tasks.length,
+  );
+  const pipelineFailed = Boolean(
+    buildError ||
+      ["PAUSED", "FAILED", "CANCELLED"].includes(workspace?.job?.status ?? ""),
+  );
   const currentTask =
     workspace?.tasks.find((task) =>
       ["running", "queued", "ready"].includes(task.status),
-    ) ?? workspace?.tasks.find((task) => task.status === "blocked");
+    ) ?? workspace?.tasks.find((task) => ["blocked", "failed"].includes(task.status));
   async function loadProjects() {
     try {
       const response = await fetch("/api/projects");
@@ -303,6 +313,7 @@ export default function Home() {
     if (busyRef.current) return;
     busyRef.current = true;
     setBuilding(true);
+    setBuildError("");
     setPreviewTab("preview");
     try {
       await refreshWorkspace(projectId);
@@ -360,10 +371,14 @@ export default function Home() {
         "Build completata. Puoi usare il prototipo e chiedere altre modifiche.",
       );
     } catch (error) {
+      const message = error instanceof Error ? error.message : "errore";
+      setBuildError(message);
       setBuildLabel("Build sospesa");
-      notify(
-        `La build si è fermata: ${error instanceof Error ? error.message : "errore"}`,
+      await refreshWorkspace(projectId).catch(() => undefined);
+      setActiveProject((current) =>
+        current ? { ...current, status: "Blocked" } : current,
       );
+      notify(`La build si è fermata: ${message}`);
     } finally {
       busyRef.current = false;
       setBuilding(false);
@@ -410,6 +425,7 @@ export default function Home() {
     }
   }
   function openProject(project: Project) {
+    setBuildError("");
     setActiveProject(project);
     setScreen("builder");
     setMessages([
@@ -577,11 +593,13 @@ export default function Home() {
           </a>
           <i />
           <strong>{activeProject?.name}</strong>
-          <span className={`build-state ${building ? "working" : "ready"}`}>
-            {building ? <LoaderCircle className="spin" /> : <Check />}
+          <span className={`build-state ${building ? "working" : pipelineFailed ? "failed" : pipelineComplete ? "ready" : "waiting"}`}>
+            {building ? <LoaderCircle className="spin" /> : pipelineComplete ? <Check /> : <Circle />}
             {building
               ? "Agenti al lavoro"
-              : livePreview
+              : pipelineFailed
+                ? "Da correggere"
+                : pipelineComplete
                 ? "Pronto"
                 : "In attesa"}
           </span>
@@ -616,7 +634,11 @@ export default function Home() {
             <small>
               {building
                 ? "Sta costruendo il tuo prodotto"
-                : "Pronto per una nuova modifica"}
+                : pipelineFailed
+                  ? "La build richiede una correzione"
+                  : pipelineComplete
+                    ? "Pronto per una nuova modifica"
+                    : "In attesa del completamento"}
             </small>
           </div>
           <div className="conversation">
@@ -629,11 +651,15 @@ export default function Home() {
             <div className="agent-summary">
               <span className="agent-avatar">F</span>
               <div>
-                <strong>{building ? buildLabel : "Prototipo pronto"}</strong>
+                <strong>{building ? buildLabel : pipelineFailed ? "Build da correggere" : pipelineComplete ? "Prototipo pronto" : "Progetto in attesa"}</strong>
                 <p>
                   {building
                     ? "Il team sta lavorando nel sandbox. Puoi seguire ogni passaggio qui sotto."
-                    : "Prova il risultato nella preview. Scrivi una modifica e gli agenti creeranno una nuova versione."}
+                    : pipelineFailed
+                      ? `Il QA ha fermato il rilascio: ${buildError || "controllo non superato"}.`
+                      : pipelineComplete
+                        ? "Prova il risultato nella preview. Scrivi una modifica e gli agenti creeranno una nuova versione."
+                        : "La preview può essere disponibile, ma il rilascio non è ancora certificato."}
                 </p>
               </div>
             </div>

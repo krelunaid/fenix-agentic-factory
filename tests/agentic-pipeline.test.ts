@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   applyPatchSet,
   attachAgenticExperience,
+  builderFilePrompt,
   classifyBuildComplexity,
   createHybridFilePlan,
   fallbackExperienceFiles,
@@ -54,6 +55,15 @@ test('single-file AI passes accept raw or fenced source without JSON escaping', 
   assert.match(normalizeGeneratedFileContent('```css\n:root{color:red}\n```', 'public/experience.css'), /prefers-reduced-motion/);
   assert.match(normalizeGeneratedFileContent("document.body.dataset.ready='1'", 'public/experience.js'), /fenix:experience-ready/);
   assert.throws(() => normalizeGeneratedFileContent('   ', 'public/experience.js'), /file_empty/);
+});
+
+test('JavaScript Builder contract requires JavaScript rather than raw icon markup', () => {
+  const brief = inferProductBrief('Musica', 'Collezione di album');
+  const entry = createHybridFilePlan(brief).files.find((file) => file.path.endsWith('.js'))!;
+  const prompt = builderFilePrompt(brief, entry);
+  assert.match(prompt, /valid ECMAScript only/);
+  assert.match(prompt, /never output raw HTML, XML or SVG/);
+  assert.doesNotMatch(prompt, /<svg><use/);
 });
 
 test('CSS normalization removes model-added remote resources before the strict gate', () => {
