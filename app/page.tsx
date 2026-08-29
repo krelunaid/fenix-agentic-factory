@@ -130,6 +130,7 @@ export default function Home() {
   const [device, setDevice] = useState<Device>("desktop");
   const [toast, setToast] = useState("");
   const busyRef = useRef(false);
+  const previewFrameRef = useRef<HTMLIFrameElement | null>(null);
   const livePreview = useMemo(
     () =>
       workspace?.previews.find((item) => item.live === 1 && item.url)?.url ??
@@ -173,6 +174,77 @@ export default function Home() {
       .catch(() => {});
     return () => controller.abort();
   }, []);
+  useEffect(() => {
+    async function handlePreviewRequest(event: MessageEvent) {
+      const frame = previewFrameRef.current;
+      const data = event.data as
+        | {
+            type?: unknown;
+            requestId?: unknown;
+            path?: unknown;
+            method?: unknown;
+            body?: unknown;
+          }
+        | null;
+      if (
+        !frame ||
+        !activeProject ||
+        event.source !== frame.contentWindow ||
+        !data ||
+        data.type !== "fenix:preview-request" ||
+        typeof data.requestId !== "string" ||
+        typeof data.path !== "string"
+      )
+        return;
+      const requestId = data.requestId.slice(0, 120);
+      const target = new URL(data.path, window.location.origin);
+      const expectedPath = `/preview/${encodeURIComponent(activeProject.id)}`;
+      const action = target.searchParams.get("api");
+      const method =
+        typeof data.method === "string" ? data.method.toUpperCase() : "GET";
+      if (
+        target.origin !== window.location.origin ||
+        target.pathname !== expectedPath ||
+        !["session", "metrics", "items", "contact"].includes(action ?? "") ||
+        !["GET", "POST", "DELETE"].includes(method) ||
+        (typeof data.body === "string" && data.body.length > 100_000)
+      )
+        return;
+      try {
+        const response = await fetch(target.toString(), {
+          method,
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body:
+            method === "GET" || typeof data.body !== "string"
+              ? undefined
+              : data.body,
+        });
+        const body = await response.text();
+        frame.contentWindow?.postMessage(
+          {
+            type: "fenix:preview-response",
+            requestId,
+            status: response.status,
+            body,
+          },
+          "*",
+        );
+      } catch {
+        frame.contentWindow?.postMessage(
+          {
+            type: "fenix:preview-response",
+            requestId,
+            status: 503,
+            body: JSON.stringify({ error: "preview_bridge_unavailable" }),
+          },
+          "*",
+        );
+      }
+    }
+    window.addEventListener("message", handlePreviewRequest);
+    return () => window.removeEventListener("message", handlePreviewRequest);
+  }, [activeProject]);
   async function refreshWorkspace(projectId: string) {
     const response = await fetch(
       `/api/projects/${encodeURIComponent(projectId)}/workspace`,
@@ -694,6 +766,7 @@ export default function Home() {
                     </span>
                   </div>
                   <iframe
+                    ref={previewFrameRef}
                     src={livePreview}
                     title={`Preview ${activeProject?.name}`}
                     sandbox="allow-forms allow-modals allow-popups allow-scripts"

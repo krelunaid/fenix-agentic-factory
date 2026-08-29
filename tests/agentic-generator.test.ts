@@ -168,6 +168,8 @@ test('generated source becomes a permanent same-site interactive preview', () =>
   assert.match(html, /<style>/);
   assert.match(html, /<script type="module">/);
   assert.match(html, /\/preview\/project-1\?token=signed&api=items/);
+  assert.match(html, /fenix:preview-request/);
+  assert.match(html, /window\.fenixPreviewFetch/);
   assert.doesNotMatch(html, /src="\/app\.js"/);
   assert.doesNotMatch(html, /href="\/styles\.css"/);
 });
