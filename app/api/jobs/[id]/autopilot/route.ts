@@ -8,7 +8,7 @@ import { extractJsonCandidate, generateAgenticApplication, inferProductBrief, pr
 import {
   applyPatchSet,
   attachAgenticExperience,
-  builderPrompt,
+  builderFilePrompt,
   classifyBuildComplexity,
   createArchitectureContract,
   createHybridFilePlan,
@@ -264,16 +264,22 @@ async function executeTask(context: ExecutionContext) {
     await recordBuildEvent(context, 'builder.plan.ready', 'info', `Piano Builder ${complexity.tier}: ${filePlan.files.length} file AI autorizzati`);
     if (env.AI_WORKER_URL && env.AI_CONTROL_TOKEN) {
       try {
-        const result = await invokeManagedAI(env.AI_WORKER_URL, env.AI_CONTROL_TOKEN, {
-          organizationId: access.job.organization_id,
-          projectId: access.job.project_id,
-          requestId: crypto.randomUUID(),
-          capability: 'text',
-          prompt: builderPrompt(brief, filePlan, complexity),
-          maxTokens: 2_048,
-        });
-        const candidate = extractJsonCandidate(result);
-        builderPatch = parseAgenticPatchSet(candidate, filePlan, complexity, 1);
+        const generatedPatches: unknown[] = [];
+        for (const entry of filePlan.files) {
+          const result = await invokeManagedAI(env.AI_WORKER_URL, env.AI_CONTROL_TOKEN, {
+            organizationId: access.job.organization_id,
+            projectId: access.job.project_id,
+            requestId: crypto.randomUUID(),
+            capability: 'text',
+            prompt: builderFilePrompt(brief, entry),
+            maxTokens: 2_048,
+          });
+          const candidate = extractJsonCandidate(result);
+          if (!candidate || typeof candidate !== 'object') throw new Error(`agentic_file_contract_invalid:${entry.path}`);
+          generatedPatches.push(candidate);
+          await recordBuildEvent(context, 'builder.file.generated', 'info', `Codice AI ricevuto per ${entry.path}; in attesa del commit atomico`);
+        }
+        builderPatch = parseAgenticPatchSet({ rationale: 'Passaggi AI separati validati e riuniti atomicamente', patches: generatedPatches }, filePlan, complexity, 1);
         files = attachAgenticExperience(scaffold, builderPatch.patches.map((patch) => ({ path: patch.path, content: patch.content })), 'hybrid-agentic');
         generationMode = 'hybrid-agentic';
         await createArtifact(context, 'agentic_patch_set', JSON.stringify(builderPatch));
@@ -297,7 +303,7 @@ async function executeTask(context: ExecutionContext) {
     await writeFilesVerified(sandbox, scope, files);
     await recordBuildEvent(context, 'preview.updated', 'info', `Preview aggiornata con modalità ${generationMode}`);
     const repository = await persistRepositoryState(context, files);
-    const bundle = await createArtifact(context, 'generated_source_bundle', JSON.stringify({ format: 'fenix-durable-preview-v2', productBrief: brief, files, generationMode, complexity, filePlan, passes: generationMode === 'hybrid-agentic' ? 1 : 0, repairAttempts: 0 } satisfies SourceBundle));
+    const bundle = await createArtifact(context, 'generated_source_bundle', JSON.stringify({ format: 'fenix-durable-preview-v2', productBrief: brief, files, generationMode, complexity, filePlan, passes: builderPatch?.patches.length ?? 0, repairAttempts: 0 } satisfies SourceBundle));
     return createArtifact(context, 'generated_source_manifest', JSON.stringify({ generator: 'fenix-agentic-web@4', productBrief: brief, generationMode, fallbackReason, complexity, filePlan, headRevision: repository.headRevision, bundleId: bundle.id, files: repository.files }));
   }
 
