@@ -201,6 +201,57 @@ test('plant prompts create a polished plant-care application', () => {
   assert.equal(rows[0]?.name, 'Monstera Alba');
 });
 
+test('every generated product uses the canonical Lucide icon system', () => {
+  const cases = [
+    ['Sito', 'sito web per uno studio', 'panels-top-left'],
+    ['CRM', 'crm vendite per clienti', 'users-round'],
+    ['Shop', 'ecommerce di prodotti', 'store'],
+    ['Spesa', 'lista acquisti personale', 'shopping-basket'],
+    ['Piante', 'app per curare piante', 'sprout'],
+    ['Agenda', 'prenotazioni e appuntamenti', 'calendar-days'],
+    ['Progetti', 'kanban per progetti e task', 'square-kanban'],
+    ['Contenuti', 'cms editoriale per articoli', 'file-text'],
+    ['Magazzino', 'inventario e logistica', 'boxes'],
+    ['Workspace', 'applicazione generica', 'layout-dashboard'],
+  ] as const;
+  const forbidden = ['❋', '⌑', '↗', '◇', '⌂', '▦', '✓', '◎', '⌕', '＋', '×', '✦', '◷', '◫', '⌁', '›'];
+
+  for (const [name, description, expectedIcon] of cases) {
+    const brief = inferProductBrief(name, description);
+    const files = generateAgenticApplication(brief);
+    const html = files.find((file) => file.path === 'public/index.html')?.content ?? '';
+    const app = files.find((file) => file.path === 'public/app.js')?.content ?? '';
+    assert.match(html, /data-icon-system="lucide-v1"/);
+    assert.match(html, new RegExp(`<symbol id="i-${expectedIcon}"`));
+    assert.match(html, new RegExp(`<use href="#i-${expectedIcon}"`));
+    assert.match(html, /class="ui-icon/);
+    assert.equal(forbidden.some((glyph) => html.includes(glyph) || app.includes(glyph)), false);
+  }
+
+  const plant = generateAgenticApplication(inferProductBrief('Piante', 'app per curare piante'));
+  const plantHtml = plant.find((file) => file.path === 'public/index.html')?.content ?? '';
+  const plantApp = plant.find((file) => file.path === 'public/app.js')?.content ?? '';
+  assert.match(plantHtml, /aria-label="Chiudi"/);
+  assert.match(plantApp, /aria-label="Elimina"/);
+  assert.match(plantApp, /icon\('trash-2'\)/);
+});
+
+test('legacy preview bundles are regenerated with the current icon contract', () => {
+  const brief = inferProductBrief('VerdeVivo', 'app per curare piante');
+  const legacyFiles = generateAgenticApplication(brief).map((file) => file.path === 'public/index.html'
+    ? { ...file, content: file.content.replaceAll('data-icon-system="lucide-v1"', '') }
+    : file);
+  const legacy = { productBrief: brief, files: legacyFiles };
+  const refreshed = refreshPreviewBundle(legacy, {
+    name: 'VerdeVivo',
+    description: 'app per curare piante',
+  });
+  const html = refreshed.files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  assert.notEqual(refreshed, legacy);
+  assert.match(html, /data-icon-system="lucide-v1"/);
+  assert.match(html, /<use href="#i-sprout"/);
+});
+
 test('existing generic preview bundles are upgraded from the project request', () => {
   const generic = inferProductBrief('Nuovo progetto', 'Applicazione generica');
   const bundle = { productBrief: generic, files: generateAgenticApplication(generic) };

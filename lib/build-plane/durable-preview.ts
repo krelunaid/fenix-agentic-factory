@@ -43,7 +43,12 @@ export function refreshPreviewBundle(
     project.description,
     bundle.productBrief,
   );
-  if (JSON.stringify(productBrief) === JSON.stringify(bundle.productBrief)) {
+  const html = bundle.files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  const hasCurrentIconSystem = html.includes('data-icon-system="lucide-v1"');
+  if (
+    hasCurrentIconSystem &&
+    JSON.stringify(productBrief) === JSON.stringify(bundle.productBrief)
+  ) {
     return bundle;
   }
   return {
