@@ -8,7 +8,7 @@ import { createSandboxClient } from '../../../../../lib/build-plane/sandbox-clie
 export const dynamic = 'force-dynamic';
 
 type InputOperation = PatchOperation & { content?: unknown };
-const frozenPaths = ['.git', '.env', '.dev.vars', '.openai/hosting.json', 'node_modules', 'dist'];
+const protectedPaths = ['.git', '.env', '.dev.vars', '.openai/hosting.json', 'node_modules', 'dist'];
 
 async function sha256(content: string) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
@@ -62,6 +62,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!approval) return NextResponse.json({ error: 'approved_destructive_gate_required' }, { status: 409 });
   }
 
+  const latestVisualScope = await env.DB.prepare('SELECT constraints_json FROM visual_selections WHERE project_id=? ORDER BY created_at DESC LIMIT 1').bind(access.job.project_id).first<{ constraints_json: string }>();
+  let sessionFrozenPaths: string[] = [];
+  try {
+    const constraints = latestVisualScope?.constraints_json ? JSON.parse(latestVisualScope.constraints_json) as { frozenPaths?: unknown } : null;
+    sessionFrozenPaths = Array.isArray(constraints?.frozenPaths) ? constraints.frozenPaths.filter((value): value is string => typeof value === 'string').slice(0, 100) : [];
+  } catch { sessionFrozenPaths = []; }
+  const frozenPaths = [...new Set([...protectedPaths, ...sessionFrozenPaths])];
   let operations: PatchOperation[];
   try {
     operations = validatePatch(candidates, { allowedGlobs: ['**'], frozenPaths, maxFiles: 32, allowDelete: hasDelete, allowGenerated: false });

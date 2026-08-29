@@ -1,285 +1,119 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import {
+  ArrowLeft, ArrowRight, Boxes, Bug, Check, ChevronDown, Code2, Columns3,
+  ExternalLink, FileCode2, Focus, GitBranch, Home as HomeIcon, Image as PictureIcon, Laptop,
+  LayoutDashboard, Menu, Monitor, PanelBottom, PanelLeft, PanelRight, Play, Plus,
+  RotateCcw, Send, Settings, ShieldCheck, Smartphone, Tablet, TestTube2, X, Zap,
+} from 'lucide-react';
 
-type Project = {
-  id: string;
-  name: string;
-  description: string;
-  status: 'Planning' | 'Building' | 'Review' | 'Ready';
-  progress: number;
-  updated: string;
-  tone: 'violet' | 'cyan' | 'amber';
-};
-
-type CoreState = 'checking' | 'connected' | 'unavailable';
+type Project = { id:string; name:string; description:string; status:'Planning'|'Building'|'Review'|'Ready'; progress:number; updated:string; tone:string };
+type CoreState = 'checking'|'connected'|'unavailable';
+type Direction = 'essential'|'expressive'|'premium';
+type WorkspaceMode = 'build'|'focus'|'visual'|'debug'|'compare'|'mobile';
+type Device = 'mobile-sm'|'mobile-lg'|'tablet-p'|'tablet-l'|'laptop'|'desktop';
 type WorkspaceData = {
-  brief: { objective?: string; version?: number } | null;
-  job: { id: string; status: string; budget_limit: number } | null;
-  tasks: Array<{ id: string; title: string; status: string; phase: number; attempts: number }>;
-  events: Array<{ id: string; human_message: string; created_at: number; severity: string }>;
-  usage: { amount?: number; units?: number } | null;
-  repositoryFiles: Array<{ path: string; language: string; generated: number }>;
-  qualityRuns: Array<{ id: string; kind: string; status: string; summary: string; duration_ms: number | null }>;
-  deployments: Array<{ id: string; environment: string; url: string | null; status: string; version: string }>;
-  previews: Array<{ id: string; url: string | null; status: string; expires_at: number; live: number }>;
+  brief:{objective?:string;version?:number}|null;
+  job:{id:string;status:string;budget_limit:number}|null;
+  tasks:Array<{id:string;title:string;status:string;phase:number;attempts:number}>;
+  events:Array<{id:string;human_message:string;created_at:number;severity:string}>;
+  usage:{amount?:number;units?:number}|null;
+  repositoryFiles:Array<{path:string;language:string;generated:number}>;
+  qualityRuns:Array<{id:string;kind:string;status:string;summary:string;duration_ms:number|null}>;
+  deployments:Array<{id:string;environment:string;url:string|null;status:string;version:string}>;
+  previews:Array<{id:string;url:string|null;status:string;expires_at:number;live:number}>;
 };
+type ChatMessage = {id:string;conversation_id?:string;role:'user'|'assistant';content:string;status:string};
+type VisualResult = {sourcePath?:string;sourceLine?:number;patchable?:boolean;cropArtifactId?:string|null};
+type ProjectsResponse = {projects:Project[];user:{displayName:string};stats:{activeJobs:number;evidenceToday:number;spendMonth:number}};
+type ConversationsResponse = {conversations:Array<{id:string}>;messages:ChatMessage[]};
 
-const starterProjects: Project[] = [
-  { id: 'orion', name: 'Orion CRM', description: 'CRM leggero per studi creativi', status: 'Building', progress: 64, updated: '12 min fa', tone: 'violet' },
-  { id: 'pulse', name: 'Pulse Analytics', description: 'Dashboard operativa per metriche SaaS', status: 'Review', progress: 88, updated: 'Ieri', tone: 'cyan' },
-  { id: 'atlas', name: 'Atlas Mobile', description: 'Companion app per team sul campo', status: 'Planning', progress: 24, updated: '3 giorni fa', tone: 'amber' },
+const directions: Array<{id:Direction;label:string;kicker:string;description:string}> = [
+  {id:'essential',label:'Essential',kicker:'Chiaro e diretto',description:'Gerarchia netta, densità equilibrata, minimo ornamento.'},
+  {id:'expressive',label:'Expressive',kicker:'Caldo e riconoscibile',description:'Accenti editoriali e ritmo più deciso, sempre leggibile.'},
+  {id:'premium',label:'Premium',kicker:'Preciso e materico',description:'Dettaglio raffinato, spazio generoso, contrasto controllato.'},
+];
+const modes: Array<{id:WorkspaceMode;label:string;icon:typeof Play}> = [
+  {id:'build',label:'Build',icon:Play},{id:'focus',label:'Focus',icon:Focus},{id:'visual',label:'Visual Edit',icon:PictureIcon},
+  {id:'debug',label:'Debug',icon:Bug},{id:'compare',label:'Compare',icon:Columns3},{id:'mobile',label:'Mobile Studio',icon:Smartphone},
+];
+const devices: Array<{id:Device;label:string;short:string;width:number;height:number;icon:typeof Monitor}> = [
+  {id:'mobile-sm',label:'Mobile piccolo · 375',short:'M S',width:375,height:812,icon:Smartphone},
+  {id:'mobile-lg',label:'Mobile grande · 430',short:'M L',width:430,height:932,icon:Smartphone},
+  {id:'tablet-p',label:'Tablet verticale · 834',short:'T P',width:834,height:1112,icon:Tablet},
+  {id:'tablet-l',label:'Tablet orizzontale · 1024',short:'T L',width:1024,height:768,icon:Tablet},
+  {id:'laptop',label:'Laptop · 1366',short:'L',width:1366,height:768,icon:Laptop},
+  {id:'desktop',label:'Desktop · 1600',short:'D',width:1600,height:1000,icon:Monitor},
 ];
 
-type CoreStats = { activeJobs: number; evidenceToday: number; spendMonth: number };
-type ChatMessage = { id: string; conversation_id?: string; role: 'user' | 'assistant'; content: string; status: string };
+function Status({state,label}:{state:CoreState|string;label:string}) { return <span className={`status-indicator ${state}`}><i aria-hidden="true"/>{label}</span>; }
+function IconButton({label,children,onClick,active=false}:{label:string;children:React.ReactNode;onClick?:()=>void;active?:boolean}) { return <button type="button" className={`icon-button${active?' active':''}`} aria-label={label} title={label} onClick={onClick}>{children}</button>; }
 
 export default function Home() {
-  const [view, setView] = useState<'home' | 'workspace'>('home');
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [prompt, setPrompt] = useState('');
-  const [activeProject, setActiveProject] = useState<Project>(starterProjects[0]);
-  const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
-  const [rightTab, setRightTab] = useState<'files' | 'tests' | 'deploy'>('files');
-  const [briefOpen, setBriefOpen] = useState(true);
-  const [toast, setToast] = useState('');
-  const [coreState, setCoreState] = useState<CoreState>('checking');
-  const [displayName, setDisplayName] = useState('André');
-  const [workspaceData, setWorkspaceData] = useState<WorkspaceData | null>(null);
-  const [workspaceState, setWorkspaceState] = useState<CoreState>('checking');
-  const [stats, setStats] = useState<CoreStats>({ activeJobs: 0, evidenceToday: 0, spendMonth: 0 });
-  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatSending, setChatSending] = useState(false);
+  const [view,setView]=useState<'home'|'workspace'>('home');
+  const [projects,setProjects]=useState<Project[]>([]);
+  const [prompt,setPrompt]=useState('');
+  const [direction,setDirection]=useState<Direction>('essential');
+  const [activeProject,setActiveProject]=useState<Project|null>(null);
+  const [coreState,setCoreState]=useState<CoreState>('checking');
+  const [workspaceState,setWorkspaceState]=useState<CoreState>('checking');
+  const [displayName,setDisplayName]=useState('André');
+  const [stats,setStats]=useState({activeJobs:0,evidenceToday:0,spendMonth:0});
+  const [workspaceData,setWorkspaceData]=useState<WorkspaceData|null>(null);
+  const [chatConversationId,setChatConversationId]=useState<string|null>(null);
+  const [chatMessages,setChatMessages]=useState<ChatMessage[]>([]);
+  const [chatInput,setChatInput]=useState('');
+  const [chatSending,setChatSending]=useState(false);
+  const [briefOpen,setBriefOpen]=useState(true);
+  const [mode,setMode]=useState<WorkspaceMode>('build');
+  const [device,setDevice]=useState<Device>('desktop');
+  const [leftOpen,setLeftOpen]=useState(true);
+  const [rightOpen,setRightOpen]=useState(true);
+  const [dockOpen,setDockOpen]=useState(false);
+  const [rightTab,setRightTab]=useState<'inspect'|'files'|'quality'|'deploy'>('files');
+  const [dockTab,setDockTab]=useState<'tasks'|'tests'|'console'|'versions'|'costs'>('tasks');
+  const [mobilePanel,setMobilePanel]=useState<'none'|'chat'|'inspect'>('none');
+  const [selector,setSelector]=useState('#app');
+  const [frozenPaths,setFrozenPaths]=useState<string[]>(['.openai/hosting.json']);
+  const [visualResult,setVisualResult]=useState<VisualResult|null>(null);
+  const [visualBusy,setVisualBusy]=useState(false);
+  const [toast,setToast]=useState('');
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch('/api/projects', { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error('core_unavailable');
-        return response.json() as Promise<{ projects: Project[]; user: { displayName: string }; stats: CoreStats }>;
-      })
-      .then((data) => {
-        setProjects(data.projects);
-        setDisplayName(data.user.displayName.split(/\s|@/)[0] || 'André');
-        setStats(data.stats);
-        setCoreState('connected');
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        setCoreState('unavailable');
-      });
-    return () => controller.abort();
-  }, []);
+  useEffect(()=>{const c=new AbortController();fetch('/api/projects',{signal:c.signal}).then(async r=>{if(!r.ok)throw new Error();return r.json() as Promise<ProjectsResponse>}).then(d=>{setProjects(d.projects);setDisplayName(d.user.displayName.split(/\s|@/)[0]||'André');setStats(d.stats);setCoreState('connected')}).catch(e=>{if(e?.name!=='AbortError')setCoreState('unavailable')});return()=>c.abort()},[]);
+  useEffect(()=>{if(view!=='workspace'||!activeProject)return;const c=new AbortController();Promise.all([
+    fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/workspace`,{signal:c.signal}).then(r=>{if(!r.ok)throw new Error();return r.json() as Promise<WorkspaceData>}),
+    fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/conversations`,{signal:c.signal}).then(r=>r.ok?r.json() as Promise<ConversationsResponse>:{conversations:[],messages:[]}),
+  ]).then(([w,ch])=>{setWorkspaceData(w);const cid=ch.conversations?.[0]?.id??null;setChatConversationId(cid);setChatMessages(cid?ch.messages.filter((m:ChatMessage)=>m.conversation_id===cid&&m.status!=='failed'):[]);setWorkspaceState('connected')}).catch(e=>{if(e?.name!=='AbortError'){setWorkspaceData(null);setWorkspaceState('unavailable')}});return()=>c.abort()},[view,activeProject]);
 
-  useEffect(() => {
-    if (view !== 'workspace') return;
-    const controller = new AbortController();
-    fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/workspace`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error('workspace_unavailable');
-        return response.json() as Promise<WorkspaceData>;
-      })
-      .then((data) => { setWorkspaceData(data); setWorkspaceState('connected'); })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        setWorkspaceData(null);
-        setWorkspaceState('unavailable');
-      });
-    return () => controller.abort();
-  }, [activeProject.id, view]);
+  const totalProgress=useMemo(()=>projects.length?Math.round(projects.reduce((s,p)=>s+p.progress,0)/projects.length):0,[projects]);
+  const livePreview=useMemo(()=>workspaceData?.previews.find(p=>p.live===1&&p.url)||null,[workspaceData]);
+  const selectedDevice=devices.find(d=>d.id===device)!;
+  const notify=(message:string)=>{setToast(message);window.setTimeout(()=>setToast(''),3200)};
+  const openProject=(project:Project)=>{setWorkspaceState('checking');setActiveProject(project);setView('workspace')};
 
-  useEffect(() => {
-    if (view !== 'workspace') return;
-    const controller = new AbortController();
-    fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/conversations`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error('conversation_unavailable');
-        return response.json() as Promise<{ conversations: Array<{ id: string }>; messages: ChatMessage[] }>;
-      })
-      .then((data) => {
-        const conversationId = data.conversations[0]?.id ?? null;
-        setChatConversationId(conversationId);
-        setChatMessages(conversationId ? data.messages.filter((message) => message.id && (message.role === 'user' || message.role === 'assistant') && message.status !== 'failed' && message.conversation_id === conversationId) : []);
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        setChatConversationId(null);
-        setChatMessages([]);
-      });
-    return () => controller.abort();
-  }, [activeProject.id, view]);
+  async function createProject(){const idea=prompt.trim();if(!idea)return notify('Descrivi prima cosa vuoi creare.');try{const r=await fetch('/api/projects',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:idea,description:`Prodotto richiesto: ${idea}`,visualDirection:direction})});if(!r.ok)throw new Error();const d=await r.json() as {project:Project};setProjects(c=>[d.project,...c]);setWorkspaceState('checking');setActiveProject(d.project);setPrompt('');setView('workspace')}catch{notify('Creazione non completata. Nessun progetto fittizio è stato aggiunto.')}}
+  async function sendChat(){const content=chatInput.trim();if(!content||chatSending||!activeProject)return;setChatSending(true);setChatInput('');setChatMessages(c=>[...c,{id:`local-${Date.now()}`,role:'user',content,status:'complete'}]);try{let conversationId=chatConversationId;if(!conversationId){const r=await fetch(`/api/projects/${activeProject.id}/conversations`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'create',title:content.slice(0,80)})});if(!r.ok)throw new Error();const created=await r.json() as {id:string};conversationId=String(created.id);setChatConversationId(conversationId)}const r=await fetch(`/api/projects/${activeProject.id}/conversations`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'send',conversationId,content})});const d=await r.json() as {assistant?:ChatMessage};const assistant=d.assistant;if(assistant?.content)setChatMessages(c=>[...c,assistant]);if(!r.ok)notify('Messaggio salvato, ma la risposta IA non è disponibile.')}catch{notify('Invio non completato. Riprova.')}finally{setChatSending(false)}}
+  async function inspectVisual(){if(!activeProject)return;setVisualBusy(true);setVisualResult(null);try{const body=livePreview?{action:'inspect',selector,previewId:livePreview.id,width:selectedDevice.width,height:selectedDevice.height,frozenPaths}:{action:'select',selector,frozenPaths,constraints:{viewport:{width:selectedDevice.width,height:selectedDevice.height},mode:'assisted-no-runtime'}};const r=await fetch(`/api/projects/${activeProject.id}/visual`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const d=await r.json() as VisualResult&{error?:string};if(!r.ok)throw new Error(d.error||'inspection_failed');setVisualResult(d);notify(livePreview?'Elemento ispezionato e screenshot archiviato.':'Selezione registrata; serve una preview live per screenshot e source mapping.')}catch(e){notify(`Ispezione non completata: ${e instanceof Error?e.message:'errore'}`)}finally{setVisualBusy(false)}}
 
-  const totalProgress = useMemo(
-    () => projects.length ? Math.round(projects.reduce((sum, project) => sum + project.progress, 0) / projects.length) : 0,
-    [projects],
-  );
-  const livePreview = useMemo(() => workspaceData?.previews.find((preview) => preview.live === 1 && Boolean(preview.url)) ?? null, [workspaceData]);
-
-  function openProject(project: Project) {
-    setActiveProject(project);
-    setWorkspaceState('checking');
-    setView('workspace');
-  }
-
-  async function createProject() {
-    const idea = prompt.trim();
-    if (!idea) {
-      setToast('Descrivi prima cosa vuoi creare.');
-      window.setTimeout(() => setToast(''), 2200);
-      return;
-    }
-    try {
-      const response = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: idea, description: `Prodotto richiesto: ${idea}` }),
-      });
-      if (!response.ok) throw new Error('project_create_failed');
-      const data = await response.json() as { project: Project };
-      setProjects((current) => [data.project, ...current]);
-      setActiveProject(data.project);
-      setPrompt('');
-      setCoreState('connected');
-      setView('workspace');
-    } catch {
-      setToast('Il nucleo dati non è disponibile. Nessun progetto fittizio è stato creato.');
-      window.setTimeout(() => setToast(''), 3200);
-    }
-  }
-
-  async function sendChatMessage() {
-    const content = chatInput.trim();
-    if (!content || chatSending) return;
-    setChatSending(true);
-    setChatInput('');
-    const optimistic: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content, status: 'complete' };
-    setChatMessages((current) => [...current, optimistic]);
-    try {
-      let conversationId = chatConversationId;
-      if (!conversationId) {
-        const created = await fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/conversations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'create', title: content.slice(0, 80) }) });
-        if (!created.ok) throw new Error('conversation_create_failed');
-        conversationId = String((await created.json() as { id: string }).id);
-        setChatConversationId(conversationId);
-      }
-      const response = await fetch(`/api/projects/${encodeURIComponent(activeProject.id)}/conversations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'send', conversationId, content }) });
-      const data = await response.json() as { assistant?: ChatMessage; assistantExecution?: string };
-      if (!response.ok && data.assistant?.status !== 'failed') throw new Error('message_send_failed');
-      if (data.assistant?.content) setChatMessages((current) => [...current, data.assistant!]);
-      if (data.assistantExecution === 'budget_blocked') setToast('Budget IA esaurito: il messaggio è stato salvato senza risposta automatica.');
-      if (data.assistantExecution === 'failed') setToast('Il provider IA non ha completato la risposta. Il messaggio è salvo e tracciato.');
-    } catch {
-      setToast('Invio non completato. Riprova tra poco.');
-    } finally {
-      setChatSending(false);
-      window.setTimeout(() => setToast(''), 3200);
-    }
-  }
-
-  return (
-    <main className="app-shell">
-      <aside className="rail" aria-label="Navigazione principale">
-        <button className="brand-mark" onClick={() => setView('home')} aria-label="FENIX home">F</button>
-        <nav className="rail-nav">
-          <button className={view === 'home' ? 'rail-button active' : 'rail-button'} onClick={() => setView('home')} aria-label="Home">⌂</button>
-          <button className={view === 'workspace' ? 'rail-button active' : 'rail-button'} onClick={() => { setWorkspaceState('checking'); setView('workspace'); }} aria-label="Workspace">◇</button>
-          <button className="rail-button" aria-label="Versioni">↺</button>
-          <button className="rail-button" aria-label="Integrazioni">⌁</button>
-        </nav>
-        <div className="rail-bottom"><button className="rail-button" aria-label="Impostazioni">⚙</button><span className="avatar">{displayName.slice(0, 2).toUpperCase()}</span></div>
-      </aside>
-
-      {view === 'home' ? (
-        <section className="home-view">
-          <header className="topbar">
-            <div><span className="eyebrow">FENIX / CONTROL PLANE</span><h1>Buonasera, {displayName}.</h1></div>
-            <div className="top-actions"><span className={`system-status ${coreState}`}><i /> {coreState === 'connected' ? 'Core connesso' : coreState === 'checking' ? 'Verifica sistemi' : 'Core non disponibile'}</span><button className="secondary-button">Documentazione</button></div>
-          </header>
-
-          <div className="home-content">
-            <section className="hero-grid">
-              <div className="composer-card">
-                <span className="section-label">NUOVO PROGETTO</span>
-                <h2>Che cosa vuoi portare alla luce?</h2>
-                <p>Descrivi il prodotto. FENIX trasformerà l’idea in brief, piano verificabile e software funzionante.</p>
-                <div className="composer">
-                  <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Es. Crea un portale clienti con login, fatture e richieste di assistenza…" aria-label="Descrivi il progetto" />
-                  <div className="composer-footer">
-                    <div className="composer-tools"><button aria-label="Allega file">＋</button><button aria-label="Usa la voce">⌁</button><span>Auto · Bilanciato</span></div>
-                    <button className="create-button" onClick={createProject}>Crea progetto <span>→</span></button>
-                  </div>
-                </div>
-                <div className="quick-types">
-                  {['Web app', 'SaaS', 'Dashboard', 'Mobile', 'Agente IA'].map((item) => <button key={item} onClick={() => setPrompt(`Crea ${item.toLowerCase()} per `)}>{item}</button>)}
-                </div>
-              </div>
-
-              <aside className="pulse-card">
-                <div className="pulse-orbit"><span>F</span><i /></div>
-                <div><span className="section-label">IMPULSO OPERATIVO</span><strong>{totalProgress}%</strong><p>Avanzamento medio dei progetti attivi</p></div>
-                <dl><div><dt>Build attive</dt><dd>{String(stats.activeJobs).padStart(2, '0')}</dd></div><div><dt>Evidence oggi</dt><dd>{stats.evidenceToday}</dd></div><div><dt>Spesa mensile</dt><dd>€ {stats.spendMonth.toFixed(2)}</dd></div></dl>
-              </aside>
-            </section>
-
-            <section className="projects-section">
-              <div className="section-heading"><div><span className="section-label">WORKSPACE</span><h2>Progetti recenti</h2></div><button className="text-button">Vedi tutti <span>→</span></button></div>
-              <div className="project-grid">
-                {projects.slice(0, 3).map((project) => (
-                  <button className="project-card" key={project.id} onClick={() => openProject(project)}>
-                    <div className={`project-visual ${project.tone}`}><span className="mini-window"><i /><i /><i /></span><b>{project.name.slice(0, 1)}</b><em>{project.progress}%</em></div>
-                    <div className="project-body"><span className={`status ${project.status.toLowerCase()}`}>{project.status}</span><h3>{project.name}</h3><p>{project.description}</p><div className="progress-track"><i style={{ width: `${project.progress}%` }} /></div><small>Aggiornato {project.updated}<span>Apri →</span></small></div>
-                  </button>
-                ))}
-                {projects.length === 0 && <div className="empty-projects"><strong>Nessun progetto ancora</strong><p>Descrivi il primo prodotto nel composer: verrà salvato nel workspace condiviso.</p></div>}
-              </div>
-            </section>
-          </div>
-        </section>
-      ) : (
-        <section className="workspace-view">
-          <header className="workspace-topbar">
-            <div className="project-identity"><button onClick={() => setView('home')}>←</button><div><span>PROGETTO</span><strong>{activeProject.name}</strong></div><span className={`status ${activeProject.status.toLowerCase()}`}>{activeProject.status}</span></div>
-            <div className="branch-pill">⑂ main</div>
-            <div className="workspace-actions"><span className="cost-pill">Sessione € {Number(workspaceData?.usage?.amount ?? 0).toFixed(2)}</span><button>Condividi</button><button className="publish-button">Pubblica</button></div>
-          </header>
-
-          <div className="workspace-grid">
-            <aside className="conversation-panel">
-              <div className="panel-tabs"><button className="active">Conversazione</button><button>Decisioni</button></div>
-              <div className="chat-scroll">
-                <div className="user-message">Crea {activeProject.description.toLowerCase()}, con una vista semplice per il team.</div>
-                <div className="fenix-message"><span className="fenix-dot">F</span><div><strong>Ho preparato il brief iniziale.</strong><p>Prima di costruire, verifichiamo obiettivi, flussi e limiti. Così ogni attività avrà criteri misurabili.</p><button className="brief-button" onClick={() => setBriefOpen(!briefOpen)}>▤ Product Brief <span>{briefOpen ? '−' : '+'}</span></button></div></div>
-                {briefOpen && <div className="brief-card"><label>Obiettivo {workspaceData?.brief?.version ? `· v${workspaceData.brief.version}` : ''}</label><p>{workspaceData?.brief?.objective ?? 'Centralizzare attività, clienti e stato operativo in un unico spazio verificabile.'}</p><div><span>{workspaceData ? `${workspaceData.tasks.length} task` : '3 flussi utente'}</span><span>{workspaceData?.job?.status ?? '6 criteri'}</span><span>{workspaceData ? `€ ${Number(workspaceData.usage?.amount ?? 0).toFixed(2)}` : '2 assunzioni'}</span></div><button>Modifica brief</button></div>}
-                <div className="fenix-message"><span className="fenix-dot">F</span><div><strong>Costruzione avviata</strong><p>Sto lavorando sulla prima tranche. Nessuna azione di produzione verrà eseguita senza conferma.</p></div></div>
-                {chatMessages.map((message) => message.role === 'user'
-                  ? <div className="user-message" key={message.id}>{message.content}</div>
-                  : <div className="fenix-message" key={message.id}><span className="fenix-dot">F</span><div><p>{message.content}</p></div></div>)}
-              </div>
-              <div className="chat-composer"><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendChatMessage(); } }} placeholder="Chiedi una modifica…" aria-label="Messaggio per FENIX" disabled={chatSending}/><button onClick={() => void sendChatMessage()} disabled={chatSending || !chatInput.trim()}>{chatSending ? '…' : '↑'}</button></div>
-            </aside>
-
-            <section className="preview-panel">
-              <div className="preview-toolbar"><div><span className={`live-dot ${workspaceState}`}/>{workspaceState === 'connected' ? 'Control Plane connesso' : workspaceState === 'checking' ? 'Connessione workspace' : 'Preview dimostrativa'}</div><div className="device-switcher"><button className={device === 'desktop' ? 'active' : ''} onClick={() => setDevice('desktop')}>▰</button><button className={device === 'tablet' ? 'active' : ''} onClick={() => setDevice('tablet')}>▯</button><button className={device === 'mobile' ? 'active' : ''} onClick={() => setDevice('mobile')}>▥</button></div><button>↗</button></div>
-              <div className="preview-canvas">
-                <span className="preview-honesty">{livePreview ? 'Preview sandbox isolata · sessione temporanea' : 'Mockup di superficie · nessuna preview runtime attiva'}</span>
-                <div className={`device-frame ${device}`}>{livePreview?.url ? <iframe className="runtime-preview" src={livePreview.url} title={`Preview ${activeProject.name}`} sandbox="allow-forms allow-modals allow-popups allow-scripts" referrerPolicy="no-referrer"/> : <div className="mock-app"><aside><b>O</b><i/><i/><i/><i/></aside><div className="mock-main"><header><div><small>OVERVIEW</small><h3>Buongiorno, team.</h3></div><span>＋ Nuovo cliente</span></header><div className="mock-stats"><article><small>RICAVI</small><strong>€ 48.240</strong><em>+12,4%</em></article><article><small>PROGETTI</small><strong>24</strong><em>6 attivi</em></article><article><small>CLIENTI</small><strong>128</strong><em>+8 questo mese</em></article></div><div className="mock-chart"><div><small>ANDAMENTO</small><strong>Ricavi mensili</strong></div><div className="bars">{[36,54,43,68,61,82,76,92].map((height, index)=><i key={index} style={{height:`${height}%`}}/>)}</div></div><div className="mock-table"><span>Attività recenti</span>{['Studio Delta','Forma Labs','Nord&Co'].map((name,index)=><div key={name}><b>{name}</b><i/><em>{['€ 4.200','€ 2.850','€ 6.100'][index]}</em></div>)}</div></div></div>}</div>
-              </div>
-              <div className="log-drawer"><span>{workspaceData ? 'EVENTI CONTROL PLANE' : 'EVENTI DIMOSTRATIVI'}</span>{workspaceData?.events.slice(-2).map((event) => <code key={event.id}><i>{new Date(event.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</i> {event.human_message}</code>)}{!workspaceData && <><code><i>21:44</i> Preview dimostrativa aggiornata</code><code><i>21:43</i> Nessun runner collegato</code></>}</div>
-            </section>
-
-            <aside className="inspector-panel">
-              <div className="panel-tabs inspector-tabs">{(['files','tests','deploy'] as const).map(tab => <button key={tab} className={rightTab===tab?'active':''} onClick={()=>setRightTab(tab)}>{tab==='files'?'File':tab==='tests'?'Test':'Deploy'}</button>)}</div>
-              {rightTab === 'files' && <div className="file-tree"><div className="inspector-heading"><span>REPO INDEX</span><b>{workspaceData?.repositoryFiles.length ?? 0}</b></div>{workspaceData?.repositoryFiles.slice(0, 40).map((file) => <button className="nested" key={file.path} title={file.path}>{file.generated ? '◇' : '#'} {file.path}</button>)}{!workspaceData?.repositoryFiles.length && <div className="diff-card"><span>REPOSITORY</span><strong>Indice non disponibile</strong><p>Collega o genera un repository per vedere i file reali.</p><button>Configura</button></div>}</div>}
-              {rightTab === 'tests' && <div className="test-list"><div className="quality-score"><span>QUALITY GATE</span><strong>{workspaceData ? `${workspaceData.qualityRuns.filter((run) => run.status === 'passed').length}/${workspaceData.qualityRuns.length}` : '—'}</strong><p>{workspaceData?.job ? `Job ${workspaceData.job.status}` : 'Nessun job attivo'}</p></div>{workspaceData?.qualityRuns.map((run) => <div key={run.id}><span className={run.status === 'passed' ? 'pass' : 'pending'}>{run.status === 'passed' ? '✓' : run.status === 'failed' ? '!' : '◷'}</span><p><strong>{run.kind}</strong><small>{run.status.toUpperCase()}{run.duration_ms != null ? ` · ${run.duration_ms} ms` : ''}</small></p></div>)}{workspaceData && !workspaceData.qualityRuns.length && <div><span className="pending">◷</span><p><strong>Nessun risultato</strong><small>I check non sono ancora stati eseguiti.</small></p></div>}</div>}
-              {rightTab === 'deploy' && <div className="deploy-panel"><span className="section-label">AMBIENTI</span>{workspaceData?.deployments.map((deployment) => <div key={deployment.id} className={deployment.environment === 'production' && deployment.status !== 'ready' ? 'locked' : ''}><i className="stage-dot"/><p><strong>{deployment.environment} · {deployment.version}</strong><small>{deployment.status}{deployment.url ? ' · URL verificabile' : ''}</small></p>{deployment.url && <a href={deployment.url} target="_blank" rel="noreferrer">Apri</a>}</div>)}{!workspaceData?.deployments.length && <div className="locked"><i>◇</i><p><strong>Nessun deploy</strong><small>La produzione richiede quality gate e approvazione esplicita.</small></p></div>}<p className="honesty-note">Sono mostrati solo deployment registrati dal Control Plane; nessun pulsante simula una pubblicazione.</p></div>}
-            </aside>
-          </div>
-        </section>
-      )}
-
-      {toast && <div className="toast" role="status">{toast}</div>}
-    </main>
-  );
+  return <main className="app-shell">
+    <aside className="rail" aria-label="Navigazione principale"><button className="brand-mark" onClick={()=>setView('home')} aria-label="FENIX home">F</button><nav><IconButton label="Home" active={view==='home'} onClick={()=>setView('home')}><HomeIcon/></IconButton><IconButton label="Workspace" active={view==='workspace'} onClick={()=>activeProject&&setView('workspace')}><LayoutDashboard/></IconButton><IconButton label="Versioni"><RotateCcw/></IconButton><IconButton label="Integrazioni"><Boxes/></IconButton></nav><div className="rail-bottom"><IconButton label="Impostazioni"><Settings/></IconButton><span className="avatar" title={displayName}>{displayName.slice(0,2).toUpperCase()}</span></div></aside>
+    {view==='home'?<section className="home-view">
+      <header className="topbar"><div><span className="eyebrow">FENIX / CONTROL PLANE</span><h1>Buonasera, {displayName}.</h1><p>Costruisci software verificabile, mantenendo ogni decisione sotto controllo.</p></div><div className="top-actions"><Status state={coreState} label={coreState==='connected'?'Core connesso':coreState==='checking'?'Verifica sistemi':'Core non disponibile'}/><button className="button secondary">Documentazione</button></div></header>
+      <div className="home-content"><section className="hero-grid"><div className="composer-card"><span className="section-label">NUOVO PROGETTO</span><h2>Che cosa vuoi portare alla luce?</h2><p>Descrivi il risultato. Prima della build scegli una direzione visiva esplicita.</p><div className="composer"><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Es. Crea un portale clienti con login, fatture e assistenza…" aria-label="Descrivi il progetto"/><div className="composer-footer"><span>Brief → direzione → piano → build</span><button className="button primary" onClick={createProject}>Crea progetto <ArrowRight/></button></div></div><div className="direction-heading"><span>Direzione visiva</span><small>Decisione registrata nel brief</small></div><div className="direction-grid">{directions.map(d=><button key={d.id} className={`direction-card ${direction===d.id?'selected':''}`} onClick={()=>setDirection(d.id)} aria-pressed={direction===d.id}><span>{d.kicker}</span><strong>{d.label}</strong><p>{d.description}</p><i>{direction===d.id&&<Check/>}</i></button>)}</div><div className="quick-types">{['Web app','SaaS','Dashboard','Mobile','Agente IA'].map(x=><button key={x} onClick={()=>setPrompt(`Crea ${x.toLowerCase()} per `)}>{x}</button>)}</div></div><aside className="pulse-card"><div className="pulse-mark"><Zap/><span>Segnale operativo</span></div><strong>{totalProgress}%</strong><p>Avanzamento medio dei progetti attivi</p><dl><div><dt>Build attive</dt><dd>{String(stats.activeJobs).padStart(2,'0')}</dd></div><div><dt>Evidence oggi</dt><dd>{stats.evidenceToday}</dd></div><div><dt>Spesa mese</dt><dd>€ {stats.spendMonth.toFixed(2)}</dd></div></dl></aside></section>
+      <section className="projects-section"><div className="section-heading"><div><span className="section-label">WORKSPACE</span><h2>Progetti recenti</h2></div><button className="button quiet">Vedi tutti <ArrowRight/></button></div><div className="project-grid">{projects.slice(0,6).map(p=><button className="project-card" key={p.id} onClick={()=>openProject(p)}><div className="project-index"><span>{p.name.slice(0,1)}</span><em>{p.progress}%</em></div><div className="project-body"><Status state={p.status.toLowerCase()} label={p.status}/><h3>{p.name}</h3><p>{p.description}</p><div className="progress"><i style={{width:`${p.progress}%`}}/></div><small>Aggiornato {new Date(p.updated).toLocaleDateString('it-IT')}<span>Apri <ArrowRight/></span></small></div></button>)}{projects.length===0&&<Empty icon={<Boxes/>} title="Nessun progetto" text="Descrivi il primo prodotto e scegli la sua direzione visiva."/>}</div></section></div>
+    </section>:activeProject&&<section className={`workspace-view mode-${mode} ${!leftOpen?'left-closed':''} ${!rightOpen?'right-closed':''} ${dockOpen?'dock-open':''}`}>
+      <header className="workspace-topbar"><div className="project-identity"><IconButton label="Torna alla home" onClick={()=>setView('home')}><ArrowLeft/></IconButton><div><span>PROGETTO</span><strong>{activeProject.name}</strong></div><Status state={activeProject.status.toLowerCase()} label={activeProject.status}/></div><div className="workspace-context"><span><GitBranch/>main</span><span className="desktop-only">Sessione € {Number(workspaceData?.usage?.amount??0).toFixed(2)}</span></div><div className="workspace-actions"><button className="button secondary desktop-only">Condividi</button><button className="button primary">Pubblica</button><IconButton label="Menu workspace" onClick={()=>setMobilePanel(mobilePanel==='none'?'chat':'none')}><Menu/></IconButton></div></header>
+      <div className="modebar" aria-label="Modalità workspace">{modes.map(m=>{const I=m.icon;return <button key={m.id} aria-label={m.label} className={mode===m.id?'active':''} onClick={()=>{setMode(m.id);if(m.id==='focus'){setLeftOpen(false);setRightOpen(false)}else if(m.id==='visual'){setRightOpen(true);setRightTab('inspect')}}}><I/><span>{m.label}</span></button>})}<div className="panel-controls"><IconButton label="Mostra o nascondi chat" active={leftOpen} onClick={()=>setLeftOpen(v=>!v)}><PanelLeft/></IconButton><IconButton label="Mostra o nascondi inspector" active={rightOpen} onClick={()=>setRightOpen(v=>!v)}><PanelRight/></IconButton><IconButton label="Mostra o nascondi dock" active={dockOpen} onClick={()=>setDockOpen(v=>!v)}><PanelBottom/></IconButton></div></div>
+      <div className="mobile-workspace-nav"><button className={mobilePanel==='chat'?'active':''} onClick={()=>setMobilePanel(mobilePanel==='chat'?'none':'chat')}><PanelLeft/>Chat</button><button className={mobilePanel==='none'?'active':''} onClick={()=>setMobilePanel('none')}><Monitor/>Preview</button><button className={mobilePanel==='inspect'?'active':''} onClick={()=>setMobilePanel(mobilePanel==='inspect'?'none':'inspect')}><PanelRight/>Inspector</button></div>
+      <div className="workspace-grid"><aside className={`conversation-panel ${mobilePanel==='chat'?'mobile-open':''}`}><PanelHeader title="Conversazione" subtitle="Piano · richieste · agenti" close={()=>{setLeftOpen(false);setMobilePanel('none')}}/><div className="scope-summary"><ShieldCheck/><div><strong>Scope corrente</strong><span>{workspaceData?.tasks.length??0} task · produzione protetta</span></div></div><div className="chat-scroll"><div className="user-message">Crea {activeProject.description.toLowerCase()}.</div><div className="fenix-message"><span>F</span><div><strong>Brief iniziale pronto</strong><p>Obiettivi, flussi e limiti restano verificabili durante la build.</p><button className="inline-action" onClick={()=>setBriefOpen(v=>!v)}>{briefOpen?'Nascondi':'Mostra'} brief <ChevronDown/></button></div></div>{briefOpen&&<div className="brief-card"><label>OBIETTIVO · v{workspaceData?.brief?.version??1}</label><p>{workspaceData?.brief?.objective??activeProject.description}</p><div><span>{workspaceData?.tasks.length??0} task</span><span>{workspaceData?.job?.status??'In attesa'}</span><span>€ {Number(workspaceData?.usage?.amount??0).toFixed(2)}</span></div></div>}{chatMessages.map(m=>m.role==='user'?<div className="user-message" key={m.id}>{m.content}</div>:<div className="fenix-message" key={m.id}><span>F</span><div><p>{m.content}</p></div></div>)}</div><div className="chat-composer"><input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void sendChat()}}} placeholder="Chiedi una modifica…" aria-label="Messaggio per FENIX"/><IconButton label="Invia messaggio" onClick={()=>void sendChat()}><Send/></IconButton></div></aside>
+        <section className="preview-panel"><div className="preview-toolbar"><div><Status state={workspaceState} label={workspaceState==='connected'?'Preview collegata':workspaceState==='checking'?'Connessione':'Preview non disponibile'}/><span className={`environment ${livePreview?'preview':'mock'}`}>{livePreview?'PREVIEW':'MOCK'}</span></div><div className="device-switcher">{devices.map(d=>{const I=d.icon;return <button key={d.id} className={device===d.id?'active':''} onClick={()=>setDevice(d.id)} title={d.label} aria-label={d.label}><I/><span>{d.short}</span></button>})}</div><div><span className="zoom">{Math.min(100,Math.round(1180/selectedDevice.width*100))}%</span>{livePreview?.url&&<a className="icon-button" href={livePreview.url} target="_blank" rel="noreferrer" aria-label="Apri preview in una nuova finestra"><ExternalLink/></a>}</div></div><div className="preview-canvas"><div className="preview-meta"><span>{selectedDevice.label}</span><span>{livePreview?'Sandbox temporanea isolata':'Superficie dimostrativa: nessun runtime attivo'}</span></div><div className="device-frame" style={{'--device-width':`${selectedDevice.width}px`,'--device-ratio':`${selectedDevice.height/selectedDevice.width}`} as React.CSSProperties}>{livePreview?.url?<iframe className="runtime-preview" src={livePreview.url} title={`Preview ${activeProject.name}`} sandbox="allow-forms allow-modals allow-popups allow-scripts" referrerPolicy="no-referrer"/>:<MockApp/>}</div></div></section>
+        <aside className={`inspector-panel ${mobilePanel==='inspect'?'mobile-open':''}`}><PanelHeader title={rightTab==='inspect'?'Visual Inspector':'Inspector'} subtitle={mode==='visual'?'Selezione assistita':'Contesto progetto'} close={()=>{setRightOpen(false);setMobilePanel('none')}}/><div className="tabs">{(['inspect','files','quality','deploy'] as const).map(t=><button key={t} className={rightTab===t?'active':''} onClick={()=>setRightTab(t)}>{t==='inspect'?'Inspect':t==='files'?'File':t==='quality'?'Quality':'Deploy'}</button>)}</div>{rightTab==='inspect'&&<div className="inspector-content"><div className="notice"><PictureIcon/><p><strong>{livePreview?'Ispezione runtime reale':'Selezione assistita'}</strong><span>{livePreview?'Selector, screenshot, stile e source mapping verificati dal Visual Worker.':'Il selector viene registrato. Screenshot e source mapping richiedono una preview live.'}</span></p></div><label className="field">Selector CSS<input value={selector} onChange={e=>setSelector(e.target.value)} placeholder="#app .card"/></label><div className="freeze-box"><div><span>File protetti</span><button onClick={()=>setFrozenPaths(v=>v.length?[]:['.openai/hosting.json'])}>{frozenPaths.length?'Sblocca sessione':'Ripristina'}</button></div>{frozenPaths.length?<span><ShieldCheck/>{frozenPaths[0]}</span>:<p>Nessun freeze aggiuntivo; restano attive le protezioni server.</p>}</div><button className="button primary wide" onClick={()=>void inspectVisual()} disabled={visualBusy||!selector.trim()}>{visualBusy?'Ispezione…':'Ispeziona elemento'}</button>{visualResult&&<div className="result-card"><span>SELEZIONE REGISTRATA</span><strong>{visualResult.sourcePath??selector}</strong><p>{visualResult.sourceLine?`Riga ${visualResult.sourceLine} · `:''}{visualResult.patchable?'Patch localizzata consentita':'Modifica bloccata dalla policy'}</p>{visualResult.cropArtifactId&&<small>Screenshot evidence: {visualResult.cropArtifactId.slice(0,8)}…</small>}</div>}</div>}
+          {rightTab==='files'&&<div className="file-list"><div className="inspector-metric"><span>REPO INDEX</span><strong>{workspaceData?.repositoryFiles.length??0}</strong></div>{workspaceData?.repositoryFiles.slice(0,50).map(f=><button key={f.path} title={f.path}><FileCode2/><span>{f.path}</span></button>)}{!workspaceData?.repositoryFiles.length&&<Empty icon={<Code2/>} title="Indice non disponibile" text="Collega o genera un repository per vedere i file reali."/>}</div>}{rightTab==='quality'&&<div className="quality-list"><div className="inspector-metric"><span>QUALITY GATE</span><strong>{workspaceData?`${workspaceData.qualityRuns.filter(r=>r.status==='passed').length}/${workspaceData.qualityRuns.length}`:'—'}</strong></div>{workspaceData?.qualityRuns.map(r=><div key={r.id}><span className={`quality-icon ${r.status}`}>{r.status==='passed'?<Check/>:<TestTube2/>}</span><p><strong>{r.kind}</strong><small>{r.status}{r.duration_ms!=null?` · ${r.duration_ms} ms`:''}</small></p></div>)}{!workspaceData?.qualityRuns.length&&<Empty icon={<TestTube2/>} title="Nessun risultato" text="I quality check non sono ancora stati eseguiti."/>}</div>}{rightTab==='deploy'&&<div className="deploy-list"><p className="honesty-note">Sono mostrati solo ambienti registrati dal Control Plane.</p>{workspaceData?.deployments.map(d=><div key={d.id}><span className={`deploy-dot ${d.status}`}/><p><strong>{d.environment} · {d.version}</strong><small>{d.status}</small></p>{d.url&&<a href={d.url} target="_blank" rel="noreferrer">Apri</a>}</div>)}{!workspaceData?.deployments.length&&<Empty icon={<ShieldCheck/>} title="Nessun deploy" text="La produzione richiede gate e approvazione esplicita."/>}</div>}</aside>
+      </div><section className="bottom-dock"><div className="dock-tabs">{(['tasks','tests','console','versions','costs'] as const).map(t=><button key={t} className={dockTab===t?'active':''} onClick={()=>{setDockTab(t);setDockOpen(true)}}>{t}</button>)}<IconButton label="Chiudi dock" onClick={()=>setDockOpen(false)}><X/></IconButton></div><div className="dock-body">{dockTab==='tasks'&&workspaceData?.tasks.slice(0,8).map(t=><div key={t.id}><span>{t.phase}</span><strong>{t.title}</strong><Status state={t.status} label={t.status}/></div>)}{dockTab==='tests'&&<p>{workspaceData?.qualityRuns.length??0} esecuzioni registrate. Apri Quality per i dettagli.</p>}{dockTab==='console'&&workspaceData?.events.slice(-6).map(e=><code key={e.id}>{new Date(e.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})} {e.human_message}</code>)}{dockTab==='versions'&&<p>Le recovery point vengono mostrate solo quando sono state create dal job.</p>}{dockTab==='costs'&&<p>Spesa sessione: € {Number(workspaceData?.usage?.amount??0).toFixed(2)} · budget job: € {Number(workspaceData?.job?.budget_limit??0).toFixed(2)}</p>}</div></section>
+    </section>}{toast&&<div className="toast" role="status">{toast}</div>}</main>;
 }
+
+function PanelHeader({title,subtitle,close}:{title:string;subtitle:string;close:()=>void}){return <div className="panel-header"><div><strong>{title}</strong><span>{subtitle}</span></div><IconButton label={`Chiudi ${title}`} onClick={close}><X/></IconButton></div>}
+function Empty({icon,title,text}:{icon:React.ReactNode;title:string;text:string}){return <div className="empty-state compact">{icon}<strong>{title}</strong><p>{text}</p></div>}
+function MockApp(){return <div className="mock-app"><aside><b>O</b><i/><i/><i/><i/></aside><div className="mock-main"><header><div><small>OVERVIEW</small><h3>Buongiorno, team.</h3></div><span><Plus/>Nuovo cliente</span></header><div className="mock-stats">{[['RICAVI','€ 48.240','+12,4%'],['PROGETTI','24','6 attivi'],['CLIENTI','128','+8 questo mese']].map(x=><article key={x[0]}><small>{x[0]}</small><strong>{x[1]}</strong><em>{x[2]}</em></article>)}</div><div className="mock-chart"><div><small>ANDAMENTO</small><strong>Ricavi mensili</strong></div><div className="bars">{[36,54,43,68,61,82,76,92].map((h,i)=><i key={i} style={{height:`${h}%`}}/>)}</div></div><div className="mock-table"><span>Attività recenti</span>{['Studio Delta','Forma Labs','Nord&Co'].map((n,i)=><div key={n}><b>{n}</b><i/><em>{['€ 4.200','€ 2.850','€ 6.100'][i]}</em></div>)}</div></div></div>}

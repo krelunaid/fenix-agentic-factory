@@ -58,9 +58,12 @@ export async function POST(request: Request) {
   const core = await requireCoreUser();
   if (!core) return NextResponse.json({ error: 'authentication_required' }, { status: 401 });
 
-  const input = await request.json().catch(() => null) as { name?: unknown; description?: unknown } | null;
+  const input = await request.json().catch(() => null) as { name?: unknown; description?: unknown; visualDirection?: unknown } | null;
   const name = typeof input?.name === 'string' ? input.name.trim().slice(0, 100) : '';
   const description = typeof input?.description === 'string' ? input.description.trim().slice(0, 600) : '';
+  const visualDirection = typeof input?.visualDirection === 'string' && ['essential', 'expressive', 'premium'].includes(input.visualDirection)
+    ? input.visualDirection
+    : 'essential';
   if (name.length < 3) return NextResponse.json({ error: 'invalid_project_name' }, { status: 400 });
 
   const now = Date.now();
@@ -92,16 +95,16 @@ export async function POST(request: Request) {
   ] as const;
   const taskIds = taskDefinitions.map(() => crypto.randomUUID());
   const statements = [
-    env.DB.prepare('INSERT INTO projects (id,organization_id,name,description,status,progress,tone,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(projectId, core.orgId, name, description || 'Nuovo progetto FENIX', 'Planning', 8, 'violet', core.user.userId, now, now),
+    env.DB.prepare('INSERT INTO projects (id,organization_id,name,description,status,progress,tone,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(projectId, core.orgId, name, description || 'Nuovo progetto FENIX', 'Planning', 8, visualDirection, core.user.userId, now, now),
     env.DB.prepare("INSERT INTO project_members (project_id,user_id,role,invited_by,created_at) VALUES (?,?, 'owner',?,?)").bind(projectId, core.user.userId, core.user.userId, now),
-    env.DB.prepare('INSERT INTO specifications (id,project_id,version,objective,assumptions_json,flows_json,scenarios_json,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?)').bind(specificationId, projectId, 1, description || name, '[]', '[]', '[]', core.user.userId, now),
+    env.DB.prepare('INSERT INTO specifications (id,project_id,version,objective,assumptions_json,flows_json,scenarios_json,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?)').bind(specificationId, projectId, 1, description || name, JSON.stringify([{ kind: 'visual_direction', value: visualDirection, status: 'chosen_by_user' }]), '[]', '[]', core.user.userId, now),
     env.DB.prepare('INSERT INTO jobs (id,project_id,status,budget_limit,created_at,updated_at) VALUES (?,?,?,?,?,?)').bind(jobId, projectId, 'DRAFT', 25, now, now),
     ...taskDefinitions.map(([title, phase, status], index) => env.DB.prepare('INSERT INTO tasks (id,job_id,project_id,phase,title,status,priority,risk_level,idempotency_key,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(taskIds[index], jobId, projectId, phase, title, status, index, phase >= 8 ? 'medium' : 'low', `${projectId}:${phase}:${index}`, now)),
     ...taskIds.slice(1).map((taskId, index) => env.DB.prepare('INSERT INTO task_dependencies (task_id,depends_on_task_id) VALUES (?,?)').bind(taskId, taskIds[index])),
     env.DB.prepare('INSERT INTO build_events (id,trace_id,project_id,job_id,type,severity,human_message,cost_delta,created_at) VALUES (?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), crypto.randomUUID(), projectId, jobId, 'project.created', 'info', 'Progetto e task graph iniziale creati', 0, now),
-    env.DB.prepare('INSERT INTO audit_events (id,organization_id,actor_user_id,action,resource_type,resource_id,payload_json,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), core.orgId, core.user.userId, 'project.create', 'project', projectId, JSON.stringify({ name }), now),
+    env.DB.prepare('INSERT INTO audit_events (id,organization_id,actor_user_id,action,resource_type,resource_id,payload_json,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), core.orgId, core.user.userId, 'project.create', 'project', projectId, JSON.stringify({ name, visualDirection }), now),
   ];
   await env.DB.batch(statements);
 
-  return NextResponse.json({ project: projectJson({ id: projectId, name, description: description || 'Nuovo progetto FENIX', status: 'Planning', progress: 8, tone: 'violet', updated_at: now }) }, { status: 201 });
+  return NextResponse.json({ project: projectJson({ id: projectId, name, description: description || 'Nuovo progetto FENIX', status: 'Planning', progress: 8, tone: visualDirection, updated_at: now }) }, { status: 201 });
 }
