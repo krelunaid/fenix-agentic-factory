@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d0b16">
+  <title>{{projectName}}</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main id="app" data-fenix-source="public/index.html:12">
+    <header><div><p class="eyebrow">Built with FENIX</p><h1>{{projectName}}</h1><p class="lede">{{projectDescription}}</p></div><span class="status">Operativo</span></header>
+    <section class="metrics" aria-label="Metriche operative">
+      <article><span>Disponibilità</span><strong>99,98%</strong><small>+0,12% questa settimana</small></article>
+      <article><span>Automazioni</span><strong>128</strong><small>14 completate oggi</small></article>
+      <article><span>Tempo medio</span><strong>1m 42s</strong><small>−18s rispetto a ieri</small></article>
+    </section>
+    <section class="activity"><div><p class="eyebrow">Attività recente</p><h2>Pipeline sotto controllo</h2></div><ul><li><span class="dot"></span>Build di produzione verificata <time>2 min</time></li><li><span class="dot"></span>Controlli qualità superati <time>8 min</time></li><li><span class="dot"></span>Snapshot di recupero creato <time>14 min</time></li></ul></section>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

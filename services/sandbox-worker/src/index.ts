@@ -115,7 +115,8 @@ export default {
         if ((command.args ?? []).length > 64) throw new Error('too_many_arguments');
         const cwd = validateWorkspacePath(command.cwd ?? '/workspace');
         const timeout = Math.min(Math.max(command.timeoutMs ?? 120_000, 1_000), 300_000);
-        const shellCommand = `cd ${quoteShell(cwd)} && exec ${quoteShell(command.executable)} ${(command.args ?? []).map(quoteShell).join(' ')}`;
+        const nonInteractive = command.executable === 'corepack' ? 'COREPACK_ENABLE_DOWNLOAD_PROMPT=0 ' : '';
+        const shellCommand = `cd ${quoteShell(cwd)} && ${nonInteractive}exec ${quoteShell(command.executable)} ${(command.args ?? []).map(quoteShell).join(' ')}`;
         const result = await sandbox.exec(shellCommand, { timeout });
         return json({ stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode, success: result.success });
       }
@@ -128,7 +129,8 @@ export default {
           throw new Error('invalid_port');
         }
         const cwd = validateWorkspacePath(command.cwd ?? '/workspace');
-        const shellCommand = `cd ${quoteShell(cwd)} && exec ${quoteShell(command.executable)} ${(command.args ?? []).map(quoteShell).join(' ')}`;
+        const nonInteractive = command.executable === 'corepack' ? 'COREPACK_ENABLE_DOWNLOAD_PROMPT=0 ' : '';
+        const shellCommand = `cd ${quoteShell(cwd)} && ${nonInteractive}exec ${quoteShell(command.executable)} ${(command.args ?? []).map(quoteShell).join(' ')}`;
         const process = await sandbox.startProcess(shellCommand, { autoCleanup: false });
         if (command.port !== undefined) {
           await process.waitForPort(command.port, { mode: 'tcp', timeout: Math.min(Math.max(command.timeoutMs ?? 120_000, 1_000), 300_000) });

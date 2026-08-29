@@ -8,16 +8,13 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run --config vitest.config.ts",
-    "deploy": "wrangler deploy"
+    "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.37.1",
-    "@cloudflare/workers-types": "5.20260828.1",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
@@ -25,7 +22,6 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.68.0",
     "vite": "8.0.13",
-    "vitest": "4.1.11",
-    "wrangler": "4.127.1"
+    "vitest": "4.1.11"
   }
 }

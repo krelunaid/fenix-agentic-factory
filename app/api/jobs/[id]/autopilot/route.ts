@@ -32,12 +32,16 @@ function slugify(value: string) {
   return value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'fenix-app';
 }
 
-function materializeTemplate(projectName: string, projectId: string) {
-  const values: Array<[string, string]> = [['{{projectName}}', projectName], ['{{projectSlug}}', `${slugify(projectName)}-${projectId.slice(0, 8)}`], ['{{compatibilityDate}}', '2026-08-29']];
-  return Object.entries(referenceTemplate).map(([path, source]) => ({
-    path,
-    content: values.reduce((result, [token, value]) => result.replaceAll(token, value), String(source)),
-  }));
+function escapeMarkup(value: string) {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function materializeTemplate(projectName: string, projectDescription: string, projectId: string) {
+  return Object.entries(referenceTemplate).map(([path, source]) => {
+    const markup = /\.(?:html|tsx)$/.test(path);
+    const values: Array<[string, string]> = [['{{projectName}}', markup ? escapeMarkup(projectName) : projectName], ['{{projectDescription}}', markup ? escapeMarkup(projectDescription) : projectDescription], ['{{projectSlug}}', `${slugify(projectName)}-${projectId.slice(0, 8)}`], ['{{compatibilityDate}}', '2026-08-29']];
+    return { path, content: values.reduce((result, [token, value]) => result.replaceAll(token, value), String(source)) };
+  });
 }
 
 async function createArtifact(context: ExecutionContext, kind: string, content: string, mediaType = 'application/json') {
@@ -101,7 +105,7 @@ async function executeTask(context: ExecutionContext) {
   }
 
   if (task.phase === 8) {
-    const files = materializeTemplate(project.name, access.job.project_id);
+    const files = materializeTemplate(project.name, project.description, access.job.project_id);
     const directories = [...new Set(files.flatMap(({ path }) => { const parts = path.split('/'); return parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/')); }))];
     if (directories.length) {
       const script = `for (const path of ${JSON.stringify(directories)}) require('fs').mkdirSync('/workspace/'+path,{recursive:true})`;
@@ -122,9 +126,9 @@ async function executeTask(context: ExecutionContext) {
   }
 
   if (task.phase === 9) {
-    const install = await sandbox.exec(scope, { executable: 'corepack', args: ['pnpm', 'install', '--frozen-lockfile'], cwd: '/workspace', timeoutMs: 300_000 });
-    if (!install.success) throw new Error(`dependency_install_failed:${install.stderr.slice(-800)}`);
-    const process = await sandbox.startProcess(scope, { executable: 'corepack', args: ['pnpm', 'dev', '--', '--host', '0.0.0.0', '--port', '8080'], cwd: '/workspace', timeoutMs: 300_000 }, 8080);
+    const contract = await sandbox.exec(scope, { executable: 'node', args: ['scripts/quality.mjs', 'unit'], cwd: '/workspace', timeoutMs: 60_000 });
+    if (!contract.success) throw new Error(`preview_contract_failed:${contract.stderr.slice(-800)}`);
+    const process = await sandbox.startProcess(scope, { executable: 'node', args: ['scripts/preview-server.mjs'], cwd: '/workspace', timeoutMs: 120_000 }, 8080);
     const preview = await sandbox.preview(scope, 8080);
     const sandboxId = await deriveSandboxId(scope);
     const previewId = crypto.randomUUID();
@@ -132,7 +136,7 @@ async function executeTask(context: ExecutionContext) {
       env.DB.prepare("UPDATE sandbox_sessions SET status='ready',constraints_json=?,lease_expires_at=?,updated_at=? WHERE id=? AND job_id=?").bind(JSON.stringify({ processId: process.processId, port: 8080 }), now + 3_600_000, now, sandboxId, access.job.id),
       env.DB.prepare("INSERT INTO preview_sessions (id,project_id,job_id,sandbox_id,url,port,status,expires_at,created_at) VALUES (?,?,?,?,?,8080,'ready',?,?)").bind(previewId, access.job.project_id, access.job.id, sandboxId, preview.url, now + 3_600_000, now),
     ]);
-    return createArtifact(context, 'preview_runtime', JSON.stringify({ previewId, url: preview.url, processId: process.processId, install: { exitCode: install.exitCode } }));
+    return createArtifact(context, 'preview_runtime', JSON.stringify({ previewId, url: preview.url, processId: process.processId, runtime: 'node-dependency-free', contract: { exitCode: contract.exitCode } }));
   }
 
   if (task.phase === 10) {
@@ -148,10 +152,10 @@ async function executeTask(context: ExecutionContext) {
 
   if (task.phase === 11) {
     const commands = [
-      { kind: 'typecheck', executable: 'corepack', args: ['pnpm', 'typecheck'] },
-      { kind: 'lint', executable: 'corepack', args: ['pnpm', 'lint'] },
-      { kind: 'unit', executable: 'corepack', args: ['pnpm', 'test'] },
-      { kind: 'build', executable: 'corepack', args: ['pnpm', 'build'] },
+      { kind: 'typecheck', executable: 'node', args: ['scripts/quality.mjs', 'typecheck'] },
+      { kind: 'lint', executable: 'node', args: ['scripts/quality.mjs', 'lint'] },
+      { kind: 'unit', executable: 'node', args: ['scripts/quality.mjs', 'unit'] },
+      { kind: 'build', executable: 'node', args: ['scripts/quality.mjs', 'build'] },
     ] as const;
     const artifactIds: string[] = [];
     for (const command of commands) {
@@ -181,7 +185,7 @@ async function executeTask(context: ExecutionContext) {
   }
 
   if (task.phase === 12) {
-    const files = materializeTemplate(project.name, access.job.project_id);
+    const files = materializeTemplate(project.name, project.description, access.job.project_id);
     const snapshot = await createArtifact(context, 'snapshot', JSON.stringify({ format: 'fenix-reference-snapshot-v1', files }));
     const repository = await env.DB.prepare('SELECT head_revision FROM repositories WHERE project_id=?').bind(access.job.project_id).first<{ head_revision: string }>();
     const parent = await env.DB.prepare('SELECT id FROM recovery_points WHERE job_id=? ORDER BY created_at DESC LIMIT 1').bind(access.job.id).first<{ id: string }>();
