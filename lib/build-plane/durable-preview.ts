@@ -47,7 +47,7 @@ export function refreshPreviewBundle(
   const hasCurrentIconSystem = html.includes('data-icon-system="lucide-v1"');
   const hasCurrentInteractionContract =
     productBrief.appType === 'website' ||
-    html.includes('data-fenix-ui="native-mobile-v2"');
+    html.includes('data-fenix-ui="native-mobile-v3"');
   const hasCurrentMobileShell =
     productBrief.appType === 'website' ||
     (html.includes('class="shell mobile-app') &&
