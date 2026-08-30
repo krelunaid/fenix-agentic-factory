@@ -338,7 +338,7 @@ export function specificityOracle(ir: CompilerIR, firstPaintHtml: string) {
   const nounPresent = primary ? [primary.lemma, primary.plural, ...primary.examples].some((value) => text.includes(value.toLocaleLowerCase('it'))) : true;
   if (!nounPresent) reasons.push(`missing-noun:${primary?.lemma ?? 'primary'}`);
   if (!hasCapability(ir, 'analytics.cockpit')) {
-    for (const banned of ['workspace live', 'alpha', 'orione', 'item 1', 'kpi', 'dashboard vendite']) {
+    for (const banned of ['workspace live', 'alpha', 'orione', 'item 1', 'elemento mattina', 'elemento pomeriggio', 'kpi', 'dashboard vendite']) {
       if (text.includes(banned)) reasons.push(`banned-chrome:${banned}`);
     }
   }

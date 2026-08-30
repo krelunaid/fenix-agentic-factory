@@ -202,6 +202,33 @@ test('every generated application has a native mobile shell and contextual icon 
   assert.match(app, /\.nav-item,\.mobile-tab/);
 });
 
+test('a bare app request becomes a coherent product instead of Elemento CRUD', () => {
+  const brief = inferProductBrief('mi crei un app', 'Applicazione full-stack: mi crei un app');
+  const files = generateAgenticApplication(brief);
+  const html = files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  const app = files.find((file) => file.path === 'public/app.js')?.content ?? '';
+  assert.equal(brief.productName, 'Orbit');
+  assert.equal(brief.appType, 'project');
+  assert.equal(brief.entity.singular, 'Attività');
+  assert.deepEqual(brief.pages, ['Oggi', 'Progetti', 'Focus', 'Profilo']);
+  assert.match(html, /Priorità personali/);
+  assert.match(html, /Le tue priorità/);
+  assert.match(html, /data-fenix-ui="native-mobile-v2"/);
+  assert.doesNotMatch(html, /Elemento|Elementi|Responsabile 1/);
+  assert.doesNotMatch(app, /\.soft-action,\.round-action[^\n]+showModal/);
+});
+
+test('mobile editor is a true bottom sheet and never sits under the tab bar', () => {
+  const files = generateAgenticApplication(inferProductBrief('Agenda', 'app mobile per prenotazioni e appuntamenti'));
+  const css = files.find((file) => file.path === 'public/styles.css')?.content ?? '';
+  const app = files.find((file) => file.path === 'public/app.js')?.content ?? '';
+  assert.match(css, /#app:has\(\.mobile-app\)>#editor/);
+  assert.match(css, /body:has\(#editor\[open\]\) \.mobile-tabbar/);
+  assert.match(app, /const openEditor=/);
+  assert.match(app, /#new-item[^\n]+openEditor/);
+  assert.doesNotMatch(app, /querySelectorAll\('\.soft-action,\.round-action'\)/);
+});
+
 test('plant prompts create a polished plant-care application', () => {
   const brief = inferProductBrief('mi crei un app di piante', 'Applicazione full-stack: mi crei un app di piante');
   const files = generateAgenticApplication(brief);
@@ -316,6 +343,23 @@ test('saved application previews are upgraded to the smartphone navigation contr
   assert.notEqual(refreshed, stale);
   assert.match(html, /class="shell mobile-app/);
   assert.match(html, /class="mobile-tabbar"/);
+});
+
+test('saved previews are regenerated for the corrected mobile interaction contract', () => {
+  const brief = inferProductBrief('Agenda', 'app mobile per prenotazioni e appuntamenti');
+  const staleFiles = generateAgenticApplication(brief).map((file) =>
+    file.path === 'public/index.html'
+      ? { ...file, content: file.content.replace('data-fenix-ui="native-mobile-v2"', 'data-fenix-ui="native-mobile-v1"') }
+      : file,
+  );
+  const stale = { productBrief: brief, files: staleFiles };
+  const refreshed = refreshPreviewBundle(stale, {
+    name: 'Agenda',
+    description: 'app mobile per prenotazioni e appuntamenti',
+  });
+  const html = refreshed.files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  assert.notEqual(refreshed, stale);
+  assert.match(html, /data-fenix-ui="native-mobile-v2"/);
 });
 
 test('existing generic preview bundles are upgraded from the project request', () => {

@@ -45,12 +45,16 @@ export function refreshPreviewBundle(
   );
   const html = bundle.files.find((file) => file.path === 'public/index.html')?.content ?? '';
   const hasCurrentIconSystem = html.includes('data-icon-system="lucide-v1"');
+  const hasCurrentInteractionContract =
+    productBrief.appType === 'website' ||
+    html.includes('data-fenix-ui="native-mobile-v2"');
   const hasCurrentMobileShell =
     productBrief.appType === 'website' ||
     (html.includes('class="shell mobile-app') &&
       html.includes('class="mobile-tabbar"'));
   if (
     hasCurrentIconSystem &&
+    hasCurrentInteractionContract &&
     hasCurrentMobileShell &&
     JSON.stringify(productBrief) === JSON.stringify(bundle.productBrief)
   ) {
