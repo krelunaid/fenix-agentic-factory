@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { buildSeedRows, type ProductBrief } from '../../../lib/build-plane/agentic-generator';
+import { buildDomainActions, buildSeedRows, type ProductBrief } from '../../../lib/build-plane/agentic-generator';
 import { buildDurablePreviewHtml, decodePreviewBundle, refreshPreviewBundle } from '../../../lib/build-plane/durable-preview';
 import { requireProjectAccess } from '../../../lib/core-access';
 import { ensureCoreSchema } from '../../../db';
@@ -13,7 +13,7 @@ const corsHeaders = {
   'access-control-allow-origin': 'null',
   'access-control-allow-credentials': 'true',
   'access-control-allow-headers': 'content-type',
-  'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
+  'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
   vary: 'Origin',
 };
 
@@ -132,6 +132,47 @@ async function handleApi(request: Request, projectId: string) {
     ).bind(id, projectId, JSON.stringify(payload), now, now).run();
     return json(action === 'contact' ? { id, ok: true } : { id, ...payload, createdAt: now, updatedAt: now }, 201);
   }
+  if (action === 'items' && request.method === 'PATCH') {
+    const id = url.searchParams.get('id');
+    if (!id) return json({ error: 'record_required' }, 400);
+    const existing = await env.DB.prepare(
+      'SELECT payload_json FROM prototype_records WHERE id=? AND project_id=?',
+    ).bind(id, projectId).first<{ payload_json: string }>();
+    if (!existing) return json({ error: 'not_found' }, 404);
+    const input = await request.json().catch(() => null) as Record<string, unknown> | null;
+    if (!input) return json({ error: 'invalid_body' }, 400);
+    const payload: Record<string, string | number> = {};
+    for (const field of brief.entity.fields) {
+      const value = input[field.key];
+      if (field.required && (value === undefined || value === '')) {
+        return json({ error: 'required_field', field: field.key }, 400);
+      }
+      payload[field.key] = field.type === 'number' ? Number(value) : String(value ?? '').slice(0, 240);
+    }
+    const now = Date.now();
+    await env.DB.prepare(
+      'UPDATE prototype_records SET payload_json=?,updated_at=? WHERE id=? AND project_id=?',
+    ).bind(JSON.stringify(payload), now, id, projectId).run();
+    return json({ id, ...payload, updatedAt: now });
+  }
+  if (action === 'actions' && request.method === 'POST') {
+    const id = url.searchParams.get('id');
+    const domainAction = buildDomainActions(brief).find((item) => item.id === url.searchParams.get('action'));
+    if (!id || !domainAction) return json({ error: 'invalid_action' }, 400);
+    const existing = await env.DB.prepare(
+      'SELECT payload_json FROM prototype_records WHERE id=? AND project_id=?',
+    ).bind(id, projectId).first<{ payload_json: string }>();
+    if (!existing) return json({ error: 'not_found' }, 404);
+    const payload = JSON.parse(existing.payload_json) as Record<string, string | number>;
+    for (const [key, value] of Object.entries(domainAction.updates)) {
+      payload[key] = value === '$today' ? new Date().toISOString().slice(0, 10) : value;
+    }
+    const now = Date.now();
+    await env.DB.prepare(
+      'UPDATE prototype_records SET payload_json=?,updated_at=? WHERE id=? AND project_id=?',
+    ).bind(JSON.stringify(payload), now, id, projectId).run();
+    return json({ id, ...payload, updatedAt: now, action: { id: domainAction.id, label: domainAction.label } });
+  }
   if (action === 'items' && request.method === 'DELETE') {
     const id = url.searchParams.get('id');
     if (!id) return json({ error: 'record_required' }, 400);
@@ -163,6 +204,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  return handleApi(request, (await context.params).id);
+}
+
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   return handleApi(request, (await context.params).id);
 }
 

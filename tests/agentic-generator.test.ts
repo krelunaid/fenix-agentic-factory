@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import test from 'node:test';
-import { buildSeedRows, generateAgenticApplication, inferProductBrief } from '../lib/build-plane/agentic-generator';
+import { buildDomainActions, buildSeedRows, generateAgenticApplication, inferProductBrief } from '../lib/build-plane/agentic-generator';
 import { buildDurablePreviewHtml, decodePreviewBundle, refreshPreviewBundle } from '../lib/build-plane/durable-preview';
 
 async function materialize(description: string) {
@@ -121,7 +121,7 @@ test('different briefs generate materially different full-stack applications', a
   }
 });
 
-test('generated application passes complete create, update and delete scenario', async () => {
+test('generated application passes create, update, domain action and delete scenario', async () => {
   const generated = await materialize('Inventario di magazzino per risorse, quantità e responsabili');
   try {
     for (const mode of ['typecheck', 'lint', 'unit', 'build']) await runQuality(generated.directory, mode);
@@ -130,6 +130,7 @@ test('generated application passes complete create, update and delete scenario',
     assert.match(output, /"auth"/);
     assert.match(output, /"create"/);
     assert.match(output, /"update"/);
+    assert.match(output, /"domain-action"/);
     assert.match(output, /"delete"/);
     const html = generated.files.find((file) => file.path === 'public/index.html')?.content ?? '';
     assert.doesNotMatch(html, /id="login-form"/);
@@ -173,6 +174,7 @@ test('generated source becomes a permanent same-site interactive preview', () =>
   assert.match(html, /<style>/);
   assert.match(html, /<script type="module">/);
   assert.match(html, /\/preview\/project-1\?token=signed&api=items/);
+  assert.match(html, /\/preview\/project-1\?token=signed&api=actions&id=/);
   assert.match(html, /fenix:preview-request/);
   assert.match(html, /window\.fenixPreviewFetch/);
   assert.doesNotMatch(html, /src="\/app\.js"/);
@@ -215,7 +217,7 @@ test('a bare app request becomes a coherent product instead of Elemento CRUD', (
   assert.deepEqual(brief.pages, ['Oggi', 'Progetti', 'Focus', 'Profilo']);
   assert.match(html, /Priorità personali/);
   assert.match(html, /Le tue priorità/);
-  assert.match(html, /data-fenix-ui="native-mobile-v3"/);
+  assert.match(html, /data-fenix-ui="native-mobile-v4"/);
   assert.doesNotMatch(html, /Elemento|Elementi|Responsabile 1/);
   assert.doesNotMatch(app, /\.soft-action,\.round-action[^\n]+showModal/);
 });
@@ -255,13 +257,40 @@ test('black-box app suite exposes real record interactions across product archet
     const html = files.find((file) => file.path === 'public/index.html')?.content ?? '';
     const app = files.find((file) => file.path === 'public/app.js')?.content ?? '';
     const server = files.find((file) => file.path === 'server.mjs')?.content ?? '';
-    assert.match(html, /data-fenix-ui="native-mobile-v3"/);
+    assert.match(html, /data-fenix-ui="native-mobile-v4"/);
     assert.match(html, /id="detail-form"/);
+    assert.match(html, /id="detail-actions"/);
     assert.match(app, /openDetail/);
     assert.match(app, /hydrateSurfaceLinks/);
+    assert.match(app, /\/api\/actions\?id=/);
+    assert.match(server, /url\.pathname==='\/api\/actions'/);
     assert.match(server, /req\.method==='PATCH'/);
     assert.doesNotMatch(html, /Elemento Mattina|Elemento Pomeriggio|Responsabile 1/);
   }
+});
+
+test('primary loops compile to different executable domain actions', () => {
+  const cases = [
+    ['VerdeVivo', 'app per curare piante e annaffiature', 'water', 'Annaffia ora'],
+    ['CineMagic', 'app per film e cartoni Disney con preferiti', 'watch', 'Segna come visto'],
+    ['Agenda', 'app per prenotazioni e appuntamenti', 'confirm', 'Conferma prenotazione'],
+    ['CRM', 'crm per lead e opportunità commerciali', 'qualify', 'Qualifica lead'],
+    ['Turni', 'turni sala e cucina con cambi dal telefono', 'take', 'Copri turno'],
+  ] as const;
+  const actionIds = new Set<string>();
+  for (const [name, description, expectedId, expectedLabel] of cases) {
+    const brief = inferProductBrief(name, description);
+    const actions = buildDomainActions(brief);
+    const files = generateAgenticApplication(brief);
+    const html = files.find((file) => file.path === 'public/index.html')?.content ?? '';
+    assert.equal(actions[0]?.id, expectedId);
+    assert.equal(actions[0]?.label, expectedLabel);
+    assert.match(html, new RegExp(`data-domain-action="${expectedId}"`));
+    assert.match(html, new RegExp(expectedLabel));
+    assert.ok(files.some((file) => file.path === 'fenix.primary-actions.json'));
+    actionIds.add(expectedId);
+  }
+  assert.equal(actionIds.size, cases.length);
 });
 
 test('plant prompts create a polished plant-care application', () => {
@@ -380,11 +409,11 @@ test('saved application previews are upgraded to the smartphone navigation contr
   assert.match(html, /class="mobile-tabbar"/);
 });
 
-test('saved previews are regenerated for the corrected mobile interaction contract', () => {
+test('saved previews are regenerated for the executable domain-action contract', () => {
   const brief = inferProductBrief('Agenda', 'app mobile per prenotazioni e appuntamenti');
   const staleFiles = generateAgenticApplication(brief).map((file) =>
     file.path === 'public/index.html'
-      ? { ...file, content: file.content.replace('data-fenix-ui="native-mobile-v3"', 'data-fenix-ui="native-mobile-v2"') }
+      ? { ...file, content: file.content.replace('data-fenix-ui="native-mobile-v4"', 'data-fenix-ui="native-mobile-v3"') }
       : file,
   );
   const stale = { productBrief: brief, files: staleFiles };
@@ -394,7 +423,8 @@ test('saved previews are regenerated for the corrected mobile interaction contra
   });
   const html = refreshed.files.find((file) => file.path === 'public/index.html')?.content ?? '';
   assert.notEqual(refreshed, stale);
-  assert.match(html, /data-fenix-ui="native-mobile-v3"/);
+  assert.match(html, /data-fenix-ui="native-mobile-v4"/);
+  assert.match(html, /id="detail-actions"/);
 });
 
 test('existing generic preview bundles are upgraded from the project request', () => {

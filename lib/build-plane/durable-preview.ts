@@ -47,7 +47,7 @@ export function refreshPreviewBundle(
   const hasCurrentIconSystem = html.includes('data-icon-system="lucide-v1"');
   const hasCurrentInteractionContract =
     productBrief.appType === 'website' ||
-    html.includes('data-fenix-ui="native-mobile-v3"');
+    html.includes('data-fenix-ui="native-mobile-v4"');
   const hasCurrentMobileShell =
     productBrief.appType === 'website' ||
     (html.includes('class="shell mobile-app') &&
@@ -81,6 +81,7 @@ export function buildDurablePreviewHtml(bundle: PreviewBundle, endpoint: string)
     ["'/api/session'", `'${endpoint}&api=session'`],
     ["'/api/metrics'", `'${endpoint}&api=metrics'`],
     ["'/api/contact'", `'${endpoint}&api=contact'`],
+    ["'/api/actions?id='", `'${endpoint}&api=actions&id='`],
     ["'/api/items/'", `'${endpoint}&api=items&id='`],
     ["'/api/items'", `'${endpoint}&api=items'`],
   ];
