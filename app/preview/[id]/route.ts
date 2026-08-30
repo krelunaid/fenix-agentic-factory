@@ -23,7 +23,7 @@ function json(body: unknown, status = 200) {
 
 async function latestBundle(projectId: string) {
   return env.DB.prepare(
-    "SELECT a.id,b.base64_data FROM artifacts a JOIN artifact_blobs b ON b.artifact_id=a.id WHERE a.project_id=? AND a.kind IN ('generated_source_bundle','snapshot') ORDER BY a.created_at DESC LIMIT 1",
+    "SELECT a.id,b.base64_data FROM artifacts a JOIN artifact_blobs b ON b.artifact_id=a.id WHERE a.project_id=? AND a.kind='generated_source_bundle' ORDER BY a.created_at DESC LIMIT 1",
   ).bind(projectId).first<BundleRow>();
 }
 

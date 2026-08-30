@@ -4,7 +4,7 @@ import { canOperate, requireJobAccess } from '../../../../../lib/core-access';
 
 export const dynamic = 'force-dynamic';
 
-const allowedKinds = new Set(['source_bundle', 'build_log', 'test_report', 'screenshot', 'visual_crop', 'trace', 'snapshot']);
+const allowedKinds = new Set(['source_bundle', 'generated_source_bundle', 'provenance', 'build_log', 'test_report', 'screenshot', 'visual_crop', 'trace', 'snapshot', 'patch_snapshot', 'project_snapshot']);
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;

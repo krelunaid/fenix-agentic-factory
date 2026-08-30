@@ -18,7 +18,7 @@ export type SandboxExecutionResult = {
   success: boolean;
 };
 
-export type ArtifactKind = 'source_bundle' | 'build_log' | 'test_report' | 'screenshot' | 'trace' | 'snapshot';
+export type ArtifactKind = 'source_bundle' | 'generated_source_bundle' | 'provenance' | 'build_log' | 'test_report' | 'screenshot' | 'trace' | 'snapshot' | 'patch_snapshot' | 'project_snapshot';
 
 export type ArtifactDescriptor = {
   id: string;

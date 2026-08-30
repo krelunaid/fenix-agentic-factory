@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { canOperate, requireProjectAccess } from '../../../../../lib/core-access';
 import { routeModel, type ModelCandidate, type ModelCapability } from '../../../../../lib/ai-gateway/router';
 import { invokeManagedAI } from '../../../../../lib/ai-gateway/client';
+import { invokeExternalAI, normalizeExternalAIProvider } from '../../../../../lib/ai-gateway/external';
+import { decryptSecret } from '../../../../../lib/secret-broker';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,8 +71,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
     return NextResponse.json({ error: models.length ? 'no_eligible_model' : 'ai_provider_not_configured', remainingBudget }, { status: 503 });
   }
-  const managed = route.selected.provider === 'cloudflare-workers-ai' && env.AI_WORKER_URL && env.AI_CONTROL_TOKEN;
-  const credential = managed ? { id: 'managed' } : await env.DB.prepare("SELECT id FROM ai_credentials WHERE organization_id=? AND provider=? AND status='active' ORDER BY created_at DESC LIMIT 1").bind(access.organizationId, route.selected.provider).first();
+  const managed = Boolean(route.selected.provider === 'cloudflare-workers-ai' && env.AI_WORKER_URL && env.AI_CONTROL_TOKEN);
+  const externalProvider = normalizeExternalAIProvider(route.selected.provider);
+  const credential = managed
+    ? { id: 'managed', secret_id: null, ciphertext: null, iv: null }
+    : await env.DB.prepare("SELECT c.id,s.id AS secret_id,s.ciphertext,s.iv FROM ai_credentials c JOIN provider_connections p ON p.id=c.id AND p.organization_id=c.organization_id JOIN secret_records s ON s.id=substr(c.secret_ref,10) AND s.organization_id=c.organization_id AND s.revoked_at IS NULL WHERE c.organization_id=? AND c.provider=? AND c.status='active' AND p.project_id=? AND p.kind='ai' AND p.status='healthy' ORDER BY c.created_at DESC LIMIT 1")
+      .bind(access.organizationId, route.selected.provider, id)
+      .first<{ id: string; secret_id: string; ciphertext: string; iv: string }>();
   if (!credential) return NextResponse.json({ error: 'ai_credential_not_configured', provider: route.selected.provider }, { status: 503 });
   const callId = crypto.randomUUID();
   const traceId = crypto.randomUUID();
@@ -78,21 +85,36 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   await env.DB.prepare("INSERT INTO ai_calls (id,organization_id,project_id,job_id,task_id,model_catalog_id,purpose,status,input_tokens,output_tokens,estimated_cost,trace_id,created_at) VALUES (?,?,?,?,?,?,?,'estimated',?,?,?,?,?)")
     .bind(callId, access.organizationId, id, job?.id ?? null, typeof input.taskId === 'string' ? input.taskId : null, route.selected.id, input.purpose.slice(0, 100), inputTokens, outputTokens, route.selected.estimatedCost, traceId, now).run();
   if (typeof input.prompt !== 'string') return NextResponse.json({ callId, traceId, model: { id: route.selected.id, provider: route.selected.provider, model: route.selected.model }, fallbackModelIds: route.fallbacks, estimatedCost: route.selected.estimatedCost, remainingBudget, status: 'estimated', execution: 'not_started' }, { status: 201 });
-  if (!managed) return NextResponse.json({ callId, traceId, status: 'estimated', execution: 'external_adapter_required' }, { status: 202 });
+  if (!managed && !externalProvider) return NextResponse.json({ callId, traceId, status: 'estimated', execution: 'external_adapter_required' }, { status: 202 });
   const capability = requiredCapabilities.includes('image_generation') ? 'image_generation' : requiredCapabilities.includes('vision') ? 'vision' : 'text';
   const image = Array.isArray(input.image) ? input.image.filter((value): value is number => Number.isInteger(value) && value >= 0 && value <= 255) : undefined;
   try {
-    const response = await invokeManagedAI(env.AI_WORKER_URL!, env.AI_CONTROL_TOKEN!, { organizationId: access.organizationId, projectId: id, requestId: callId, capability, prompt: input.prompt.slice(0, capability === 'image_generation' ? 2_048 : 32_000), maxTokens: typeof input.maxTokens === 'number' ? Math.min(Math.max(Math.round(input.maxTokens), 1), 2048) : Math.min(Math.max(outputTokens, 1), 2048), image });
-    const providerResult = response.result as { response?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } } | undefined;
-    const actualInput = Number(providerResult?.usage?.prompt_tokens ?? inputTokens);
-    const actualOutput = Number(providerResult?.usage?.completion_tokens ?? outputTokens);
+    const prompt = input.prompt.slice(0, capability === 'image_generation' ? 2_048 : 32_000);
+    const maxTokens = typeof input.maxTokens === 'number' ? Math.min(Math.max(Math.round(input.maxTokens), 1), 2048) : Math.min(Math.max(outputTokens, 1), 2048);
+    let responseText: unknown;
+    let actualInput = inputTokens;
+    let actualOutput = outputTokens;
+    if (managed) {
+      const response = await invokeManagedAI(env.AI_WORKER_URL!, env.AI_CONTROL_TOKEN!, { organizationId: access.organizationId, projectId: id, requestId: callId, capability, prompt, maxTokens, image });
+      const providerResult = response.result as { response?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } } | undefined;
+      responseText = providerResult?.response ?? response;
+      actualInput = Number(providerResult?.usage?.prompt_tokens ?? inputTokens);
+      actualOutput = Number(providerResult?.usage?.completion_tokens ?? outputTokens);
+    } else {
+      if (!env.CREDENTIALS_MASTER_KEY || !credential.secret_id || !credential.ciphertext || !credential.iv) throw new Error('external_ai_secret_not_ready');
+      const apiKey = await decryptSecret(env.CREDENTIALS_MASTER_KEY, credential.ciphertext, credential.iv, `${access.organizationId}:${id}:${credential.secret_id}`);
+      const response = await invokeExternalAI({ provider: externalProvider!, model: route.selected.model, apiKey, prompt, maxTokens });
+      responseText = response.response;
+      actualInput = response.usage.promptTokens || inputTokens;
+      actualOutput = response.usage.completionTokens || outputTokens;
+    }
     const actualCost = (actualInput * route.selected.inputCostPerMillion + actualOutput * route.selected.outputCostPerMillion) / 1_000_000;
     const completedAt = Date.now();
     await env.DB.batch([
       env.DB.prepare("UPDATE ai_calls SET status='completed',input_tokens=?,output_tokens=?,actual_cost=?,completed_at=? WHERE id=?").bind(actualInput, actualOutput, actualCost, completedAt, callId),
       env.DB.prepare("INSERT INTO usage_ledger (id,organization_id,project_id,task_id,kind,units,amount,created_at) VALUES (?,?,?,?, 'ai_tokens',?,?,?)").bind(crypto.randomUUID(), access.organizationId, id, typeof input.taskId === 'string' ? input.taskId : null, actualInput + actualOutput, actualCost, completedAt),
     ]);
-    return NextResponse.json({ callId, traceId, model: { id: route.selected.id, provider: route.selected.provider, model: route.selected.model }, response: providerResult?.response ?? response, usage: { inputTokens: actualInput, outputTokens: actualOutput, actualCost }, status: 'completed' }, { status: 201 });
+    return NextResponse.json({ callId, traceId, model: { id: route.selected.id, provider: route.selected.provider, model: route.selected.model }, response: responseText, usage: { inputTokens: actualInput, outputTokens: actualOutput, actualCost }, status: 'completed' }, { status: 201 });
   } catch (error) {
     await env.DB.prepare("UPDATE ai_calls SET status='failed',completed_at=? WHERE id=?").bind(Date.now(), callId).run();
     return NextResponse.json({ error: error instanceof Error ? error.message : 'ai_inference_failed', callId, traceId }, { status: 502 });

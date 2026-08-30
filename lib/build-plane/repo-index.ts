@@ -9,9 +9,9 @@ export type RepositoryFile = {
 const generatedSegments = new Set(['node_modules', '.next', '.vinext', 'dist', 'coverage', '.git']);
 
 export function normalizeRepositoryPath(input: string) {
-  const normalized = input.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/{2,}/g, '/');
+  const normalized = input.normalize('NFKC').replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/{2,}/g, '/');
   const segments = normalized.split('/');
-  if (!normalized || normalized.startsWith('/') || segments.some((segment) => segment === '..' || segment === '.')) {
+  if (!normalized || normalized.startsWith('/') || /^[a-zA-Z]:/.test(normalized) || /[\u0000-\u001f\u007f]/.test(normalized) || segments.some((segment) => segment === '..' || segment === '.')) {
     throw new Error('path_outside_repository');
   }
   return normalized;

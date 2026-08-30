@@ -249,6 +249,19 @@ export const recoveryPoints = sqliteTable('recovery_points', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 }, (table) => [index('idx_recovery_job_created').on(table.jobId, table.createdAt)]);
 
+export const patchOperations = sqliteTable('patch_operations', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  jobId: text('job_id').notNull().references(() => jobs.id),
+  requestHash: text('request_hash').notNull(),
+  status: text('status', { enum: ['preparing', 'applying', 'completed', 'failed'] }).notNull(),
+  recoveryPointId: text('recovery_point_id').references(() => recoveryPoints.id),
+  errorCode: text('error_code'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+}, (table) => [index('idx_patch_operations_job_created').on(table.jobId, table.createdAt)]);
+
 export const qualityRuns = sqliteTable('quality_runs', {
   id: text('id').primaryKey(),
   projectId: text('project_id').notNull().references(() => projects.id),

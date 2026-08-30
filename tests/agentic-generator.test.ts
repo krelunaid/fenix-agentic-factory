@@ -132,7 +132,10 @@ test('generated application passes auth, database, list and create scenario', as
     const html = generated.files.find((file) => file.path === 'public/index.html')?.content ?? '';
     assert.doesNotMatch(html, /id="login-form"/);
     assert.match(html, /class="product-view/);
-    assert.match(html, /Demo interattiva/);
+    assert.match(html, /data-archetype="timeline"/);
+    assert.doesNotMatch(html, /Workspace live|Alpha|Orione|Nova|Atlas/);
+    assert.ok(generated.files.some((file) => file.path === 'fenix.intent-graph.json'));
+    assert.ok(generated.files.some((file) => file.path === 'fenix.specificity.json'));
     await runInstantApplicationPreview(generated.directory);
   } finally {
     await rm(generated.directory, { recursive: true, force: true });
@@ -183,6 +186,22 @@ test('personal purchase prompts create a shopping experience, not a generic dash
   assert.match(html, /Budget sotto controllo/);
 });
 
+test('every generated application has a native mobile shell and contextual icon tabs', () => {
+  const brief = inferProductBrief('Agenda mobile', 'App per prenotazioni e appuntamenti di uno studio');
+  const files = generateAgenticApplication(brief);
+  const html = files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  const css = files.find((file) => file.path === 'public/styles.css')?.content ?? '';
+  const app = files.find((file) => file.path === 'public/app.js')?.content ?? '';
+  assert.match(html, /class="shell mobile-app/);
+  assert.match(html, /data-app-type="booking"/);
+  assert.match(html, /class="mobile-tabbar"/);
+  assert.match(html, /class="mobile-tab active"/);
+  assert.match(html, /<use href="#i-calendar-days"/);
+  assert.match(css, /@media\(max-width:780px\)[\s\S]*\.mobile-tabbar/);
+  assert.match(css, /grid-auto-columns:82%/);
+  assert.match(app, /\.nav-item,\.mobile-tab/);
+});
+
 test('plant prompts create a polished plant-care application', () => {
   const brief = inferProductBrief('mi crei un app di piante', 'Applicazione full-stack: mi crei un app di piante');
   const files = generateAgenticApplication(brief);
@@ -201,6 +220,34 @@ test('plant prompts create a polished plant-care application', () => {
   assert.equal(rows[0]?.name, 'Monstera Alba');
 });
 
+test('film and cartoon prompts create a cinematic catalog instead of the generic workspace', () => {
+  const brief = inferProductBrief(
+    'mi crei un app per sapere tutti i film e Cartoni Disney',
+    'Applicazione full-stack per scoprire film e cartoni Disney e salvare i preferiti',
+  );
+  const files = generateAgenticApplication(brief);
+  const html = files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  const css = files.find((file) => file.path === 'public/styles.css')?.content ?? '';
+  const rows = buildSeedRows(brief);
+  assert.equal(brief.appType, 'entertainment');
+  assert.equal(brief.productName, 'CineMagic');
+  assert.equal(brief.entity.plural, 'Titoli');
+  assert.deepEqual(brief.pages, ['Scopri', 'Film', 'Cartoni', 'La mia lista']);
+  assert.match(html, /Catalogo film e cartoni/);
+  assert.match(html, /La magia del cinema/);
+  assert.match(html, /Continua a esplorare/);
+  assert.match(html, /Encanto/);
+  assert.match(html, /Il Re Leone/);
+  assert.match(html, /Aggiungi titolo/);
+  assert.match(html, /<use href="#i-clapperboard"/);
+  assert.match(html, /<use href="#i-film"/);
+  assert.match(html, /<use href="#i-heart"/);
+  assert.match(css, /\.media-grid/);
+  assert.match(css, /\.entertainment-shell/);
+  assert.doesNotMatch(html, /Alpha|Orione|Nova|Atlas|Workspace live|Panoramica|Elementi/);
+  assert.equal(rows[0]?.title, 'Encanto');
+});
+
 test('every generated product uses the canonical Lucide icon system', () => {
   const cases = [
     ['Sito', 'sito web per uno studio', 'panels-top-left'],
@@ -208,6 +255,7 @@ test('every generated product uses the canonical Lucide icon system', () => {
     ['Shop', 'ecommerce di prodotti', 'store'],
     ['Spesa', 'lista acquisti personale', 'shopping-basket'],
     ['Piante', 'app per curare piante', 'sprout'],
+    ['Cinema', 'app per scoprire film e cartoni Disney', 'clapperboard'],
     ['Agenda', 'prenotazioni e appuntamenti', 'calendar-days'],
     ['Progetti', 'kanban per progetti e task', 'square-kanban'],
     ['Contenuti', 'cms editoriale per articoli', 'file-text'],
@@ -252,6 +300,24 @@ test('legacy preview bundles are regenerated with the current icon contract', ()
   assert.match(html, /<use href="#i-sprout"/);
 });
 
+test('saved application previews are upgraded to the smartphone navigation contract', () => {
+  const brief = inferProductBrief('CineMagic', 'app per film e cartoni Disney');
+  const staleFiles = generateAgenticApplication(brief).map((file) =>
+    file.path === 'public/index.html'
+      ? { ...file, content: file.content.replace('class="mobile-tabbar"', 'class="legacy-tabs"') }
+      : file,
+  );
+  const stale = { productBrief: brief, files: staleFiles };
+  const refreshed = refreshPreviewBundle(stale, {
+    name: 'CineMagic',
+    description: 'app per film e cartoni Disney',
+  });
+  const html = refreshed.files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  assert.notEqual(refreshed, stale);
+  assert.match(html, /class="shell mobile-app/);
+  assert.match(html, /class="mobile-tabbar"/);
+});
+
 test('existing generic preview bundles are upgraded from the project request', () => {
   const generic = inferProductBrief('Nuovo progetto', 'Applicazione generica');
   const bundle = { productBrief: generic, files: generateAgenticApplication(generic) };
@@ -264,4 +330,18 @@ test('existing generic preview bundles are upgraded from the project request', (
   assert.equal(refreshed.productBrief.entity.fields[0]?.key, 'name');
   assert.match(html, /Le mie piante/);
   assert.doesNotMatch(html, /Alpha/);
+});
+
+test('existing generic entertainment previews are upgraded from the original project request', () => {
+  const generic = inferProductBrief('Nuovo progetto', 'Applicazione generica');
+  const bundle = { productBrief: generic, files: generateAgenticApplication(generic) };
+  const refreshed = refreshPreviewBundle(bundle, {
+    name: 'mi crei un app per sapere tutti i film e Cartoni Disney',
+    description: 'Applicazione full-stack: film e cartoni Disney',
+  });
+  const html = refreshed.files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  assert.equal(refreshed.productBrief.appType, 'entertainment');
+  assert.match(html, /Catalogo film e cartoni/);
+  assert.match(html, /CineMagic/);
+  assert.doesNotMatch(html, /Alpha|Orione|Nova|Atlas/);
 });

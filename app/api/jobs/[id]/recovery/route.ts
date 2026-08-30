@@ -28,13 +28,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const input = await request.json().catch(() => null) as { action?: unknown; artifactId?: unknown; sourceRevision?: unknown; parentId?: unknown; fromId?: unknown; targetId?: unknown; recoveryPointId?: unknown; approvalId?: unknown } | null;
   if (input?.action === 'apply-rollback' && typeof input.recoveryPointId === 'string') {
     if (!env.SANDBOX_WORKER_URL || !env.SANDBOX_CONTROL_TOKEN) return NextResponse.json({ error: 'sandbox_provider_not_configured' }, { status: 503 });
-    const point = await env.DB.prepare("SELECT rp.id,rp.artifact_id,ab.base64_data FROM recovery_points rp JOIN artifacts a ON a.id=rp.artifact_id JOIN artifact_blobs ab ON ab.artifact_id=a.id WHERE rp.id=? AND rp.job_id=? AND a.kind='snapshot'").bind(input.recoveryPointId, id).first<{ id: string; artifact_id: string; base64_data: string }>();
+    const point = await env.DB.prepare("SELECT rp.id,rp.artifact_id,rp.source_revision,ab.base64_data FROM recovery_points rp JOIN artifacts a ON a.id=rp.artifact_id JOIN artifact_blobs ab ON ab.artifact_id=a.id WHERE rp.id=? AND rp.job_id=? AND a.kind IN ('patch_snapshot','project_snapshot','snapshot')").bind(input.recoveryPointId, id).first<{ id: string; artifact_id: string; source_revision: string; base64_data: string }>();
     if (!point) return NextResponse.json({ error: 'recovery_snapshot_not_found' }, { status: 404 });
     let snapshot: { format?: string; files?: Array<{ path?: unknown; existed?: unknown; content?: unknown }> };
     try { snapshot = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(point.base64_data), (character) => character.charCodeAt(0)))) as typeof snapshot; }
     catch { return NextResponse.json({ error: 'invalid_recovery_snapshot' }, { status: 409 }); }
-    if (snapshot.format !== 'fenix-patch-snapshot-v1' || !Array.isArray(snapshot.files) || snapshot.files.length === 0 || snapshot.files.length > 32) return NextResponse.json({ error: 'unsupported_recovery_snapshot' }, { status: 409 });
-    const files = snapshot.files.map((file) => ({ path: normalizeRepositoryPath(String(file.path ?? '')), existed: file.existed === true, content: typeof file.content === 'string' ? file.content : '' }));
+    const patchSnapshot = snapshot.format === 'fenix-patch-snapshot-v1';
+    const projectSnapshot = snapshot.format === 'fenix-agentic-snapshot-v3';
+    const maxFiles = patchSnapshot ? 32 : 500;
+    if ((!patchSnapshot && !projectSnapshot) || !Array.isArray(snapshot.files) || snapshot.files.length === 0 || snapshot.files.length > maxFiles) return NextResponse.json({ error: 'unsupported_recovery_snapshot' }, { status: 409 });
+    const files = snapshot.files.map((file) => ({ path: normalizeRepositoryPath(String(file.path ?? '')), existed: projectSnapshot || file.existed === true, content: typeof file.content === 'string' ? file.content : '' }));
     if (files.some((file) => ['.git', '.env', '.dev.vars', '.openai/hosting.json'].some((path) => file.path === path || file.path.startsWith(`${path}/`)))) return NextResponse.json({ error: 'protected_recovery_path' }, { status: 409 });
     if (files.some((file) => !file.existed)) {
       if (typeof input.approvalId !== 'string') return NextResponse.json({ error: 'rollback_delete_requires_approval' }, { status: 409 });
@@ -45,12 +48,40 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!repository) return NextResponse.json({ error: 'repository_index_required' }, { status: 409 });
     const scope = { organizationId: access.job.organization_id, projectId: access.job.project_id, jobId: id };
     const client = createSandboxClient(env.SANDBOX_WORKER_URL, env.SANDBOX_CONTROL_TOKEN);
+    const indexedRows = await env.DB.prepare('SELECT path FROM repository_files WHERE repository_id=?').bind(repository.id).all<{ path: string }>();
+    const indexedPaths = new Set(indexedRows.results.map((row) => row.path));
+    const preimages = new Map<string, { existed: boolean; content: string }>();
+    try {
+      for (const file of files) {
+        if (!indexedPaths.has(file.path)) preimages.set(file.path, { existed: false, content: '' });
+        else {
+          const current = await client.readFile(scope, `/workspace/${file.path}`);
+          preimages.set(file.path, { existed: true, content: current.content });
+        }
+      }
+    } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'rollback_preflight_failed' }, { status: 502 }); }
+    const appliedPaths: string[] = [];
+    async function compensateRollback() {
+      const failures: string[] = [];
+      for (const path of [...appliedPaths].reverse()) {
+        const preimage = preimages.get(path);
+        try {
+          if (preimage?.existed) await client.writeFile(scope, `/workspace/${path}`, preimage.content);
+          else await client.deleteFile(scope, `/workspace/${path}`);
+        } catch { failures.push(path); }
+      }
+      return failures;
+    }
     try {
       for (const file of files) {
         if (file.existed) await client.writeFile(scope, `/workspace/${file.path}`, file.content);
         else await client.deleteFile(scope, `/workspace/${file.path}`);
+        appliedPaths.push(file.path);
       }
-    } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'rollback_provider_failed' }, { status: 502 }); }
+    } catch (error) {
+      const compensationFailures = await compensateRollback();
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'rollback_provider_failed', rollbackComplete: compensationFailures.length === 0, rollbackFailures: compensationFailures }, { status: 502 });
+    }
     const now = Date.now();
     const statements: D1PreparedStatement[] = [];
     for (const file of files) {
@@ -62,14 +93,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       }
     }
     statements.push(
+      env.DB.prepare('UPDATE repositories SET head_revision=?,updated_at=? WHERE id=?').bind(`recovery:${point.id}:${point.source_revision}`.slice(0, 200), now, repository.id),
       env.DB.prepare('INSERT INTO audit_events (id,organization_id,actor_user_id,action,resource_type,resource_id,payload_json,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), access.job.organization_id, access.user.userId, 'recovery.apply', 'recovery_point', point.id, JSON.stringify({ artifactId: point.artifact_id, files: files.map((file) => file.path) }), now),
       env.DB.prepare('INSERT INTO build_events (id,trace_id,project_id,job_id,type,severity,human_message,cost_delta,created_at) VALUES (?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), crypto.randomUUID(), access.job.project_id, id, 'recovery.applied', 'warning', `Rollback applicato a ${files.length} file`, 0, now),
     );
-    await env.DB.batch(statements);
+    try { await env.DB.batch(statements); }
+    catch {
+      const compensationFailures = await compensateRollback();
+      return NextResponse.json({ error: 'rollback_persistence_failed', rollbackComplete: compensationFailures.length === 0, rollbackFailures: compensationFailures }, { status: 500 });
+    }
     return NextResponse.json({ id: point.id, status: 'rolled_back', files: files.map((file) => file.path), appliedAt: now });
   }
   if (input?.action === 'create' && typeof input.artifactId === 'string' && typeof input.sourceRevision === 'string') {
-    const artifact = await env.DB.prepare("SELECT id FROM artifacts WHERE id=? AND job_id=? AND kind IN ('snapshot','source_bundle')").bind(input.artifactId, id).first();
+    const artifact = await env.DB.prepare("SELECT id FROM artifacts WHERE id=? AND job_id=? AND kind IN ('patch_snapshot','project_snapshot','snapshot','source_bundle')").bind(input.artifactId, id).first();
     if (!artifact) return NextResponse.json({ error: 'snapshot_artifact_required' }, { status: 400 });
     if (typeof input.parentId === 'string') {
       const parent = await env.DB.prepare('SELECT id FROM recovery_points WHERE id=? AND job_id=?').bind(input.parentId, id).first();

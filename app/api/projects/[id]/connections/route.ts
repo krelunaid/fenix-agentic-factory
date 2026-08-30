@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { canOperate, requireProjectAccess } from '../../../../../lib/core-access';
 import { redactSecrets } from '../../../../../lib/integrations/policy';
 import { decryptSecret, encryptSecret } from '../../../../../lib/secret-broker';
+import { normalizeExternalAIProvider, validateExternalAIKey } from '../../../../../lib/ai-gateway/external';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,26 +42,35 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!connection || !connection.secret_id || !connection.ciphertext || !connection.iv) return NextResponse.json({ error: 'connection_secret_not_ready' }, { status: 409 });
     const secret = await decryptSecret(env.CREDENTIALS_MASTER_KEY, connection.ciphertext, connection.iv, `${access.organizationId}:${id}:${connection.secret_id}`);
     const provider = connection.provider.toLowerCase();
-    let endpoint: string;
-    let headers: Record<string, string>;
-    if (provider === 'github') {
-      endpoint = 'https://api.github.com/user'; headers = { authorization: `Bearer ${secret}`, accept: 'application/vnd.github+json', 'user-agent': 'FENIX-Control-Plane/2' };
-    } else if (provider === 'openai') {
-      endpoint = 'https://api.openai.com/v1/models'; headers = { authorization: `Bearer ${secret}` };
-    } else if (provider === 'stripe') {
-      endpoint = 'https://api.stripe.com/v1/balance'; headers = { authorization: `Basic ${btoa(`${secret}:`)}` };
-    } else {
-      return NextResponse.json({ error: 'provider_validation_adapter_not_available', provider }, { status: 422 });
-    }
     const checkedAt = Date.now();
     let healthy = false;
     let statusCode = 0;
-    try {
-      const response = await fetch(endpoint, { headers, redirect: 'error', signal: AbortSignal.timeout(10_000) });
-      statusCode = response.status;
-      healthy = response.ok;
-    } catch {
-      healthy = false;
+    const externalAI = normalizeExternalAIProvider(provider);
+    if (externalAI) {
+      try {
+        const result = await validateExternalAIKey(externalAI, secret);
+        statusCode = result.statusCode;
+        healthy = result.healthy;
+      } catch {
+        healthy = false;
+      }
+    } else {
+      let endpoint: string;
+      let headers: Record<string, string>;
+      if (provider === 'github') {
+        endpoint = 'https://api.github.com/user'; headers = { authorization: `Bearer ${secret}`, accept: 'application/vnd.github+json', 'user-agent': 'FENIX-Control-Plane/2' };
+      } else if (provider === 'stripe') {
+        endpoint = 'https://api.stripe.com/v1/balance'; headers = { authorization: `Basic ${btoa(`${secret}:`)}` };
+      } else {
+        return NextResponse.json({ error: 'provider_validation_adapter_not_available', provider }, { status: 422 });
+      }
+      try {
+        const response = await fetch(endpoint, { headers, redirect: 'error', signal: AbortSignal.timeout(10_000) });
+        statusCode = response.status;
+        healthy = response.ok;
+      } catch {
+        healthy = false;
+      }
     }
     const status = healthy ? 'healthy' : 'degraded';
     const statements: D1PreparedStatement[] = [
@@ -69,6 +79,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     ];
     if (connection.kind === 'source') statements.push(env.DB.prepare("UPDATE source_connections SET status=? WHERE id=? AND organization_id=? AND status!='revoked'").bind(healthy ? 'active' : 'invalid', connection.id, access.organizationId));
     if (connection.kind === 'ai' && healthy) statements.push(env.DB.prepare("INSERT INTO ai_credentials (id,organization_id,provider,mode,secret_ref,status,created_by,created_at) VALUES (?,?,?,'byok',?,'active',?,?) ON CONFLICT(id) DO UPDATE SET secret_ref=excluded.secret_ref,status='active',revoked_at=NULL").bind(connection.id, access.organizationId, provider, connection.secret_ref, access.user.userId, checkedAt));
+    if (connection.kind === 'ai' && healthy && externalAI === 'xai') statements.push(env.DB.prepare("INSERT INTO model_catalog (id,provider,model,capabilities_json,input_cost_per_million,output_cost_per_million,enabled,updated_at) VALUES ('xai-grok-4-6','xai','grok-4.6','[\"text\",\"vision\",\"tool_calling\",\"json_schema\"]',2,6,1,?) ON CONFLICT(id) DO UPDATE SET enabled=1,updated_at=excluded.updated_at").bind(checkedAt));
+    if (connection.kind === 'ai' && healthy && externalAI === 'anthropic') statements.push(env.DB.prepare("INSERT INTO model_catalog (id,provider,model,capabilities_json,input_cost_per_million,output_cost_per_million,enabled,updated_at) VALUES ('anthropic-claude-sonnet-5','anthropic','claude-sonnet-5','[\"text\",\"vision\",\"tool_calling\",\"json_schema\"]',3,15,1,?) ON CONFLICT(id) DO UPDATE SET enabled=1,updated_at=excluded.updated_at").bind(checkedAt));
     await env.DB.batch(statements);
     return NextResponse.json({ id: connection.id, provider, status, checkedAt, validationStatusCode: statusCode || null }, { status: healthy ? 200 : 422 });
   }
@@ -90,11 +102,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       secretRef = `secret://${secretId}`;
       statements.push(env.DB.prepare('INSERT INTO secret_records (id,organization_id,project_id,ciphertext,iv,created_by,created_at) VALUES (?,?,?,?,?,?,?)').bind(secretId, access.organizationId, id, encrypted.ciphertext, encrypted.iv, access.user.userId, now));
     }
+    const provider = input.kind === 'ai' ? (normalizeExternalAIProvider(input.provider) ?? input.provider.toLowerCase()) : input.provider;
     statements.push(env.DB.prepare("INSERT INTO provider_connections (id,organization_id,project_id,kind,provider,secret_ref,config_json,status,created_by,created_at) VALUES (?,?,?,?,?,?,?,'pending',?,?)")
-      .bind(connectionId, access.organizationId, id, input.kind, input.provider.slice(0, 80), secretRef, JSON.stringify(redactSecrets(input.config ?? {})), access.user.userId, now));
+      .bind(connectionId, access.organizationId, id, input.kind, provider.slice(0, 80), secretRef, JSON.stringify(redactSecrets(input.config ?? {})), access.user.userId, now));
     if (input.kind === 'source') {
       if (!secretRef) return NextResponse.json({ error: 'source_connection_requires_secret_broker_ref' }, { status: 400 });
-      statements.push(env.DB.prepare("INSERT INTO source_connections (id,organization_id,provider,installation_ref,secret_ref,status,created_by,created_at) VALUES (?,?,?,?,?,'invalid',?,?)").bind(connectionId, access.organizationId, input.provider.slice(0, 80), null, secretRef, access.user.userId, now));
+      statements.push(env.DB.prepare("INSERT INTO source_connections (id,organization_id,provider,installation_ref,secret_ref,status,created_by,created_at) VALUES (?,?,?,?,?,'invalid',?,?)").bind(connectionId, access.organizationId, provider.slice(0, 80), null, secretRef, access.user.userId, now));
     }
     await env.DB.batch(statements);
     return NextResponse.json({ id: connectionId, status: 'pending', provider: input.provider, next: 'provider_validation_required' }, { status: 201 });

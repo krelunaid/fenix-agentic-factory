@@ -36,7 +36,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!access) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (!canOperate(access.job.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   if (!env.SANDBOX_WORKER_URL || !env.SANDBOX_CONTROL_TOKEN) return NextResponse.json({ error: 'sandbox_provider_not_configured' }, { status: 503 });
-  const input = await request.json().catch(() => null) as { operations?: unknown; approvalId?: unknown } | null;
+  const input = await request.json().catch(() => null) as { operations?: unknown; approvalId?: unknown; idempotencyKey?: unknown } | null;
   if (!Array.isArray(input?.operations) || input.operations.length === 0 || input.operations.length > 32) return NextResponse.json({ error: 'invalid_patch' }, { status: 400 });
 
   const raw = input.operations as InputOperation[];
@@ -93,6 +93,23 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ error: error instanceof Error ? error.message : 'patch_precondition_failed' }, { status: 409 });
   }
 
+  const idempotencyKey = typeof input.idempotencyKey === 'string' ? input.idempotencyKey : crypto.randomUUID();
+  if (!/^[A-Za-z0-9:_-]{8,128}$/.test(idempotencyKey)) return NextResponse.json({ error: 'invalid_idempotency_key' }, { status: 400 });
+  const requestHash = await sha256(JSON.stringify(raw));
+  const patchId = await sha256(`${id}:${idempotencyKey}`);
+  const claimAt = Date.now();
+  const claim = await env.DB.prepare("INSERT INTO patch_operations (id,organization_id,project_id,job_id,request_hash,status,created_at) VALUES (?,?,?,?,?,'preparing',?) ON CONFLICT(id) DO NOTHING")
+    .bind(patchId, access.job.organization_id, access.job.project_id, id, requestHash, claimAt).run();
+  if (claim.meta.changes !== 1) {
+    const existing = await env.DB.prepare('SELECT request_hash,status,recovery_point_id,error_code,completed_at FROM patch_operations WHERE id=? AND job_id=?').bind(patchId, id).first<{ request_hash: string; status: string; recovery_point_id: string | null; error_code: string | null; completed_at: number | null }>();
+    if (!existing || existing.request_hash !== requestHash) return NextResponse.json({ error: 'idempotency_key_conflict' }, { status: 409 });
+    if (existing.status === 'completed') return NextResponse.json({ id: patchId, status: 'applied', recoveryPointId: existing.recovery_point_id, appliedAt: existing.completed_at, replayed: true }, { status: 200 });
+    return NextResponse.json({ error: existing.status === 'failed' ? 'patch_previous_attempt_failed' : 'patch_already_in_progress', id: patchId, status: existing.status, errorCode: existing.error_code }, { status: 409 });
+  }
+  async function failOperation(errorCode: string) {
+    await env.DB.prepare("UPDATE patch_operations SET status='failed',error_code=?,completed_at=? WHERE id=? AND job_id=? AND status!='completed'").bind(errorCode.slice(0, 200), Date.now(), patchId, id).run();
+  }
+
   const scope = { organizationId: access.job.organization_id, projectId: access.job.project_id, jobId: id };
   const client = createSandboxClient(env.SANDBOX_WORKER_URL, env.SANDBOX_CONTROL_TOKEN);
   const originals = new Map<string, string>();
@@ -110,33 +127,46 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
   try {
     for (const operation of operations) {
-      const workspacePath = `/workspace/${operation.path}`;
-      if (operation.operation !== 'create') {
-        const current = await client.readFile(scope, workspacePath);
-        if (await sha256(current.content) !== operation.expectedSha256) throw new Error(`sandbox_precondition_failed:${operation.path}`);
-        originals.set(operation.path, current.content);
-      }
-      if (operation.operation === 'delete') await client.deleteFile(scope, workspacePath);
-      else await client.writeFile(scope, workspacePath, contents.get(operation.path) ?? '');
-      applied.push(operation);
+      if (operation.operation === 'create') continue;
+      const current = await client.readFile(scope, `/workspace/${operation.path}`);
+      if (await sha256(current.content) !== operation.expectedSha256) throw new Error(`sandbox_precondition_failed:${operation.path}`);
+      originals.set(operation.path, current.content);
     }
   } catch (error) {
-    const rollbackFailures = await rollbackApplied();
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'patch_apply_failed', rollbackComplete: rollbackFailures.length === 0, rollbackFailures }, { status: 409 });
+    const errorCode = error instanceof Error ? error.message : 'patch_preflight_failed';
+    await failOperation(errorCode);
+    return NextResponse.json({ error: errorCode }, { status: 409 });
   }
 
-  const now = Date.now();
-  const patchId = crypto.randomUUID();
   const snapshotJson = JSON.stringify({
     format: 'fenix-patch-snapshot-v1',
     patchId,
     files: operations.map((operation) => ({ path: operation.path, existed: operation.operation !== 'create', content: operation.operation === 'create' ? null : originals.get(operation.path) ?? '' })),
   });
   const snapshot = toBase64(snapshotJson);
-  const snapshotPersistable = snapshot.bytes.byteLength <= 750_000;
-  const snapshotArtifactId = snapshotPersistable ? crypto.randomUUID() : null;
-  const recoveryPointId = snapshotPersistable ? crypto.randomUUID() : null;
-  const parentRecovery = snapshotPersistable ? await env.DB.prepare('SELECT id FROM recovery_points WHERE job_id=? ORDER BY created_at DESC LIMIT 1').bind(id).first<{ id: string }>() : null;
+  if (snapshot.bytes.byteLength > 750_000) {
+    await failOperation('recovery_snapshot_too_large');
+    return NextResponse.json({ error: 'recovery_snapshot_too_large', maxBytes: 750_000, snapshotBytes: snapshot.bytes.byteLength }, { status: 413 });
+  }
+  const snapshotArtifactId = crypto.randomUUID();
+  const recoveryPointId = crypto.randomUUID();
+  const parentRecovery = await env.DB.prepare('SELECT id FROM recovery_points WHERE job_id=? ORDER BY created_at DESC LIMIT 1').bind(id).first<{ id: string }>();
+  await env.DB.prepare("UPDATE patch_operations SET status='applying' WHERE id=? AND job_id=? AND status='preparing'").bind(patchId, id).run();
+
+  try {
+    for (const operation of operations) {
+      const workspacePath = `/workspace/${operation.path}`;
+      if (operation.operation === 'delete') await client.deleteFile(scope, workspacePath);
+      else await client.writeFile(scope, workspacePath, contents.get(operation.path) ?? '');
+      applied.push(operation);
+    }
+  } catch (error) {
+    const rollbackFailures = await rollbackApplied();
+    await failOperation(error instanceof Error ? error.message : 'patch_apply_failed');
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'patch_apply_failed', rollbackComplete: rollbackFailures.length === 0, rollbackFailures }, { status: 409 });
+  }
+
+  const now = Date.now();
   const statements = operations.map((operation) => {
     if (operation.operation === 'delete') return env.DB.prepare('DELETE FROM repository_files WHERE repository_id=? AND path=?').bind(repository.id, operation.path);
     const content = contents.get(operation.path) ?? '';
@@ -144,18 +174,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return env.DB.prepare('INSERT INTO repository_files (repository_id,path,sha256,byte_size,language,generated,indexed_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(repository_id,path) DO UPDATE SET sha256=excluded.sha256,byte_size=excluded.byte_size,language=excluded.language,generated=excluded.generated,indexed_at=excluded.indexed_at').bind(repository.id, indexed.path, indexed.sha256, indexed.byteSize, indexed.language, indexed.generated ? 1 : 0, now);
   });
   statements.push(env.DB.prepare('INSERT INTO audit_events (id,organization_id,actor_user_id,action,resource_type,resource_id,payload_json,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(patchId, access.job.organization_id, access.user.userId, 'patch.apply', 'job', id, JSON.stringify({ operations, approvalId: typeof input.approvalId === 'string' ? input.approvalId : null }), now));
-  if (snapshotArtifactId && recoveryPointId) {
-    statements.push(
-      env.DB.prepare('INSERT INTO artifacts (id,project_id,job_id,task_id,kind,storage_key,sha256,byte_size,media_type,created_at) VALUES (?,?,?,NULL,?,?,?,?,?,?)').bind(snapshotArtifactId, access.job.project_id, id, `${access.job.organization_id}/${access.job.project_id}/${id}/recovery/${snapshotArtifactId}.json`, await sha256(snapshotJson), snapshot.bytes.byteLength, 'application/json', now),
-      env.DB.prepare('INSERT INTO artifact_blobs (artifact_id,base64_data,created_at) VALUES (?,?,?)').bind(snapshotArtifactId, snapshot.base64, now),
-      env.DB.prepare('INSERT INTO recovery_points (id,project_id,job_id,parent_id,source_revision,artifact_id,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(recoveryPointId, access.job.project_id, id, parentRecovery?.id ?? null, `patch:${patchId}`, snapshotArtifactId, access.user.userId, now),
-    );
-  }
+  statements.push(
+    env.DB.prepare('INSERT INTO artifacts (id,project_id,job_id,task_id,kind,storage_key,sha256,byte_size,media_type,created_at) VALUES (?,?,?,NULL,?,?,?,?,?,?)').bind(snapshotArtifactId, access.job.project_id, id, 'patch_snapshot', `${access.job.organization_id}/${access.job.project_id}/${id}/recovery/${snapshotArtifactId}.json`, await sha256(snapshotJson), snapshot.bytes.byteLength, 'application/json', now),
+    env.DB.prepare('INSERT INTO artifact_blobs (artifact_id,base64_data,created_at) VALUES (?,?,?)').bind(snapshotArtifactId, snapshot.base64, now),
+    env.DB.prepare('INSERT INTO recovery_points (id,project_id,job_id,parent_id,source_revision,artifact_id,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(recoveryPointId, access.job.project_id, id, parentRecovery?.id ?? null, `patch:${patchId}`, snapshotArtifactId, access.user.userId, now),
+    env.DB.prepare("UPDATE patch_operations SET status='completed',recovery_point_id=?,completed_at=? WHERE id=? AND job_id=? AND status='applying'").bind(recoveryPointId, now, patchId, id),
+  );
   try {
     await env.DB.batch(statements);
   } catch {
     const rollbackFailures = await rollbackApplied();
+    await failOperation('patch_persistence_failed');
     return NextResponse.json({ error: 'patch_persistence_failed', rollbackComplete: rollbackFailures.length === 0, rollbackFailures }, { status: 500 });
   }
-  return NextResponse.json({ id: patchId, status: 'applied', operations, appliedAt: now, recoveryPointId, recoveryPersistence: recoveryPointId ? 'd1_bounded' : 'snapshot_too_large' }, { status: 201 });
+  return NextResponse.json({ id: patchId, status: 'applied', operations, appliedAt: now, recoveryPointId, recoveryPersistence: 'd1_bounded' }, { status: 201 });
 }

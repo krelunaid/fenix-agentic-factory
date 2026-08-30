@@ -9,7 +9,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const access = await requireProjectAccess(id);
   if (!access) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  const [project, brief, job, events, approvals, usage, repositoryFiles, qualityRuns, deployments, previews, previewBundle] = await Promise.all([
+  const [project, brief, job, events, approvals, usage, repositoryFiles, qualityRuns, deployments, previews, previewBundle, provenanceArtifact, recoveryPoints] = await Promise.all([
     env.DB.prepare('SELECT id,name,description,status,progress,tone,created_at,updated_at FROM projects WHERE id=?').bind(id).first(),
     env.DB.prepare('SELECT id,version,objective,assumptions_json,flows_json,scenarios_json,approved_at,created_at FROM specifications WHERE project_id=? ORDER BY version DESC LIMIT 1').bind(id).first(),
     env.DB.prepare('SELECT id,status,budget_limit,created_at,updated_at FROM jobs WHERE project_id=? ORDER BY created_at DESC LIMIT 1').bind(id).first<{ id: string; status: string; budget_limit: number; created_at: number; updated_at: number }>(),
@@ -20,12 +20,14 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     env.DB.prepare('SELECT q.id,q.kind,q.status,q.summary,q.duration_ms,q.started_at,q.completed_at FROM quality_runs q JOIN jobs j ON j.id=q.job_id WHERE j.project_id=? ORDER BY q.started_at DESC LIMIT 50').bind(id).all(),
     env.DB.prepare('SELECT d.id,d.environment,d.url,d.status,d.created_at,d.completed_at,r.version FROM deployment_records d JOIN releases r ON r.id=d.release_id WHERE r.project_id=? ORDER BY d.created_at DESC LIMIT 30').bind(id).all(),
     env.DB.prepare("SELECT id,url,status,port,expires_at,created_at,CASE WHEN status='ready' AND expires_at>? THEN 1 ELSE 0 END AS live FROM preview_sessions WHERE project_id=? ORDER BY created_at DESC LIMIT 10").bind(Date.now(), id).all<{ id: string; url: string | null; status: string; port: number; expires_at: number; created_at: number; live: number }>(),
-    env.DB.prepare("SELECT id,created_at FROM artifacts WHERE project_id=? AND kind IN ('generated_source_bundle','snapshot') ORDER BY created_at DESC LIMIT 1").bind(id).first<{ id: string; created_at: number }>(),
+    env.DB.prepare("SELECT id,created_at FROM artifacts WHERE project_id=? AND kind='generated_source_bundle' ORDER BY created_at DESC LIMIT 1").bind(id).first<{ id: string; created_at: number }>(),
+    env.DB.prepare("SELECT id,sha256,created_at FROM artifacts WHERE project_id=? AND kind='provenance' ORDER BY created_at DESC LIMIT 1").bind(id).first<{ id: string; sha256: string; created_at: number }>(),
+    env.DB.prepare("SELECT rp.id,rp.job_id,rp.source_revision,rp.artifact_id,rp.created_at,a.kind FROM recovery_points rp JOIN artifacts a ON a.id=rp.artifact_id WHERE rp.project_id=? ORDER BY rp.created_at DESC LIMIT 25").bind(id).all(),
   ]);
   const tasks = job ? await env.DB.prepare("SELECT t.id,t.phase,t.title,t.status,t.priority,t.risk_level,t.created_at,t.completed_at,(SELECT COUNT(*) FROM task_dependencies d WHERE d.task_id=t.id) AS dependencies,(SELECT COUNT(*) FROM task_attempts a WHERE a.task_id=t.id) AS attempts FROM tasks t WHERE t.job_id=? ORDER BY t.priority ASC").bind(job.id).all() : { results: [] };
 
   const durablePreview = previewBundle
     ? [{ id: `durable-${previewBundle.id}`, url: `/preview/${encodeURIComponent(id)}`, status: 'ready', port: 443, expires_at: null, created_at: previewBundle.created_at, live: 1 }]
     : [];
-  return NextResponse.json({ project, brief, job, tasks: tasks.results, events: events.results.reverse(), approvals: approvals.results, usage, repositoryFiles: repositoryFiles.results, qualityRuns: qualityRuns.results, deployments: deployments.results, previews: [...durablePreview, ...previews.results.map((preview) => ({ ...preview, live: previewBundle ? 0 : preview.live }))], role: access.role });
+  return NextResponse.json({ project, brief, job, tasks: tasks.results, events: events.results.reverse(), approvals: approvals.results, usage, repositoryFiles: repositoryFiles.results, qualityRuns: qualityRuns.results, deployments: deployments.results, previews: [...durablePreview, ...previews.results.map((preview) => ({ ...preview, live: previewBundle ? 0 : preview.live }))], recoveryPoints: recoveryPoints.results, sourceExportReady: Boolean(previewBundle), provenanceReady: Boolean(provenanceArtifact), role: access.role });
 }

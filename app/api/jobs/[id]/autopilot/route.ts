@@ -26,6 +26,7 @@ import {
 } from '../../../../../lib/build-plane/agentic-pipeline';
 import { inspectVisualTarget } from '../../../../../lib/visual/client';
 import { invokeManagedAI } from '../../../../../lib/ai-gateway/client';
+import { createProvenance } from '../../../../../lib/provenance';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,9 +184,15 @@ async function executeTask(context: ExecutionContext) {
       await recordSystemAgent(context, 'Product Architect', 'Transforms a natural-language request into a validated product brief.', { mode: 'managed-ai', error: error instanceof Error ? error.message : 'provider_failed', fallback: 'domain-constraint-solver' }, 'failed');
     }
     const brief = inferProductBrief(project.name, project.description, candidate);
-    await recordSystemAgent(context, 'Product Architect', 'Transforms a natural-language request into a validated product brief.', { mode: candidate ? 'managed-ai' : 'domain-constraint-solver', schemaValidated: true, appType: brief.appType });
+    await recordSystemAgent(context, 'Product Architect', 'Compiles natural language into a schema-bound intent and capability graph.', { mode: candidate ? 'managed-ai+intent-compiler' : 'intent-compiler', schemaValidated: true, appType: brief.appType, archetype: brief.compiler.grammar.layoutBias[0], capabilities: brief.compiler.capabilities.nodes.map((node) => node.id) });
     await env.DB.prepare('UPDATE specifications SET objective=?,flows_json=?,scenarios_json=? WHERE project_id=? AND version=(SELECT MAX(version) FROM specifications WHERE project_id=?)').bind(brief.summary, JSON.stringify(brief.workflows), JSON.stringify([{ kind: 'generated_product_brief', brief }]), access.job.project_id, access.job.project_id).run();
-    await createArtifact(context, 'product_brief', JSON.stringify(brief));
+    await Promise.all([
+      createArtifact(context, 'product_brief', JSON.stringify(brief)),
+      createArtifact(context, 'intent_graph', JSON.stringify(brief.compiler.intent)),
+      createArtifact(context, 'capability_graph', JSON.stringify(brief.compiler.capabilities)),
+      createArtifact(context, 'interaction_model', JSON.stringify(brief.compiler.interaction)),
+      createArtifact(context, 'design_grammar', JSON.stringify(brief.compiler.grammar)),
+    ]);
     const specification = createProductSpecification(brief);
     await recordBuildEvent(context, 'spec.ready', 'info', `Specifiche validate: ${specification.entity.fields.length} campi, ${specification.screens.length} viste`);
     return createArtifact(context, 'product_specification', JSON.stringify(specification));
@@ -228,7 +235,7 @@ async function executeTask(context: ExecutionContext) {
     const brief = await latestProductBrief(access.job.id, project);
     const complexity = classifyBuildComplexity(brief);
     const filePlan = createHybridFilePlan(brief);
-    const graph = { strategy: 'contract-bound-build-test-repair', mode: 'hybrid', complexity, agents: ['Product Architect', 'UX Director', 'Software Architect', 'Scaffolder', 'Frontend Builder', 'Preview Agent', 'QA Agent', 'QA Diagnoser', 'Repair Agent', 'Security Reviewer', 'Deploy Agent'], contracts: ['ProductSpecification', 'UxBlueprint', 'ArchitectureContract', 'AgenticFilePlan', 'AgenticPatchSet', 'QaDiagnosis', 'RepairSet'], filePlan, deliverable: `${brief.appType} full-stack web application`, failClosed: true };
+    const graph = { strategy: 'intent-compile-build-test-repair', mode: 'hybrid', complexity, passes: ['IntentGraph', 'CapabilityGraph', 'InteractionModel', 'DesignGrammar', 'Codegen', 'Boot', 'Oracles', 'Repair'], agents: ['Product Architect', 'UX Director', 'Software Architect', 'Scaffolder', 'Frontend Builder', 'Preview Agent', 'QA Agent', 'QA Diagnoser', 'Repair Agent', 'Security Reviewer', 'Deploy Agent'], contracts: ['IntentGraph', 'CapabilityGraph', 'InteractionModel', 'DesignGrammar', 'ProductSpecification', 'ArchitectureContract', 'AgenticPatchSet', 'QaDiagnosis', 'RepairSet'], filePlan, deliverable: `${brief.compiler.grammar.layoutBias[0]} full-stack web application`, failClosed: true };
     return createArtifact(context, 'task_graph', JSON.stringify(graph));
   }
 
@@ -331,7 +338,7 @@ async function executeTask(context: ExecutionContext) {
     await recordBuildEvent(context, 'preview.updated', 'info', `Preview aggiornata con modalità ${generationMode}`);
     const repository = await persistRepositoryState(context, files);
     const bundle = await createArtifact(context, 'generated_source_bundle', JSON.stringify({ format: 'fenix-durable-preview-v2', productBrief: brief, files, generationMode, complexity, filePlan, passes: aiPasses, repairAttempts: 0 } satisfies SourceBundle));
-    return createArtifact(context, 'generated_source_manifest', JSON.stringify({ generator: 'fenix-agentic-web@4', productBrief: brief, generationMode, fallbackReason, complexity, filePlan, headRevision: repository.headRevision, bundleId: bundle.id, files: repository.files }));
+    return createArtifact(context, 'generated_source_manifest', JSON.stringify({ generator: 'fenix-intent-compiler@5', productBrief: brief, generationMode, fallbackReason, complexity, filePlan, headRevision: repository.headRevision, bundleId: bundle.id, files: repository.files }));
   }
 
   if (task.phase === 9) {
@@ -355,6 +362,11 @@ async function executeTask(context: ExecutionContext) {
   }
 
   if (task.phase === 11) {
+    const specificityFile = await sandbox.readFile(scope, '/workspace/fenix.specificity.json');
+    const specificity = JSON.parse(specificityFile.content) as { pass?: boolean; score?: number; reasons?: string[] };
+    const specificityArtifact = await createArtifact(context, 'specificity_result', JSON.stringify(specificity));
+    await recordQuality(context, 'specificity', specificity.pass === true ? 'passed' : 'failed', specificity.pass === true ? `Brief-fit oracle passed (${Number(specificity.score ?? 0).toFixed(2)})` : `Brief-fit oracle failed: ${(specificity.reasons ?? []).join(', ')}`, specificityArtifact.id, 0, { compiler: 'fenix-intent-ir-v1', reasons: specificity.reasons ?? [] });
+    if (specificity.pass !== true) throw new Error(`specificity_failed:${(specificity.reasons ?? []).join(',')}`);
     const commands = [
       { kind: 'agentic-code', executable: 'node', args: ['--check', 'public/experience.js'] },
       { kind: 'typecheck', executable: 'node', args: ['scripts/quality.mjs', 'typecheck'] },
@@ -452,12 +464,12 @@ async function executeTask(context: ExecutionContext) {
       recordSystemAgent(context, 'QA Agent', 'Executes static, API, integration, visual and accessibility gates and preserves evidence.', { gates: [...commands.map((item) => item.kind), 'integration', 'e2e', 'accessibility'], passed: true, repairAttempts }),
       recordSystemAgent(context, 'Security Reviewer', 'Verifies authentication, authorization, origin policy and unsafe browser primitives.', { gates: ['session-auth', 'admin-delete', 'same-origin-write', 'no-eval'], passed: true }),
     ]);
-    return createArtifact(context, 'quality_summary', JSON.stringify({ passed: [...commands.map((item) => item.kind), 'integration', 'e2e', 'accessibility'], repairAttempts, artifactIds: [...artifactIds, integrationArtifact.id, visualArtifact.id] }));
+    return createArtifact(context, 'quality_summary', JSON.stringify({ passed: ['specificity', ...commands.map((item) => item.kind), 'integration', 'e2e', 'accessibility'], repairAttempts, artifactIds: [specificityArtifact.id, ...artifactIds, integrationArtifact.id, visualArtifact.id] }));
   }
 
   if (task.phase === 12) {
     const bundle = await latestGeneratedBundle(access.job.id);
-    const snapshot = await createArtifact(context, 'snapshot', JSON.stringify({ ...bundle, format: 'fenix-agentic-snapshot-v3', snapshottedAt: now }));
+    const snapshot = await createArtifact(context, 'project_snapshot', JSON.stringify({ ...bundle, format: 'fenix-agentic-snapshot-v3', snapshottedAt: now }));
     const repository = await env.DB.prepare('SELECT head_revision FROM repositories WHERE project_id=?').bind(access.job.project_id).first<{ head_revision: string }>();
     const parent = await env.DB.prepare('SELECT id FROM recovery_points WHERE job_id=? ORDER BY created_at DESC LIMIT 1').bind(access.job.id).first<{ id: string }>();
     await env.DB.prepare('INSERT INTO recovery_points (id,project_id,job_id,parent_id,source_revision,artifact_id,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), access.job.project_id, access.job.id, parent?.id ?? null, repository?.head_revision ?? snapshot.sha256, snapshot.id, access.user.userId, now).run();
@@ -477,8 +489,26 @@ async function executeTask(context: ExecutionContext) {
   if (task.phase === 15) {
     const preview = await latestPreview(access.job.id);
     if (!preview?.url) throw new Error('preview_missing_for_release');
+    const generatedBundle = await latestGeneratedBundle(access.job.id);
     const repository = await env.DB.prepare('SELECT head_revision FROM repositories WHERE project_id=?').bind(access.job.project_id).first<{ head_revision: string }>();
-    const sourceBundle = await createArtifact(context, 'source_bundle', JSON.stringify({ repository: access.job.project_id, headRevision: repository?.head_revision, generatedAt: now, previewUrl: preview.url, environment: 'isolated-preview' }));
+    const sourceBundle = await createArtifact(context, 'source_bundle', JSON.stringify({ ...generatedBundle, release: { repository: access.job.project_id, headRevision: repository?.head_revision, generatedAt: now, previewUrl: preview.url, environment: 'isolated-preview' } }));
+    const [specification, modelRows, qualityRows] = await Promise.all([
+      env.DB.prepare('SELECT objective FROM specifications WHERE project_id=? ORDER BY version DESC LIMIT 1').bind(access.job.project_id).first<{ objective: string }>(),
+      env.DB.prepare("SELECT c.id,catalog.provider,catalog.model FROM ai_calls c JOIN model_catalog catalog ON catalog.id=c.model_catalog_id WHERE c.job_id=? AND c.status='completed' ORDER BY c.created_at").bind(access.job.id).all<{ id: string; provider: string; model: string }>(),
+      env.DB.prepare("SELECT q.kind,q.status,e.artifact_id,a.sha256 FROM quality_runs q JOIN evidence e ON e.quality_run_id=q.id AND e.status='verified' JOIN artifacts a ON a.id=e.artifact_id WHERE q.job_id=? AND q.status='passed' ORDER BY q.started_at").bind(access.job.id).all<{ kind: string; status: string; artifact_id: string; sha256: string }>(),
+    ]);
+    const provenance = await createProvenance({
+      projectId: access.job.project_id,
+      jobId: access.job.id,
+      sourceArtifactId: sourceBundle.id,
+      sourceArtifactSha256: sourceBundle.sha256,
+      prompt: specification?.objective ?? project.description,
+      files: generatedBundle.files,
+      models: modelRows.results.map((row) => ({ provider: row.provider, model: row.model, callId: row.id })),
+      quality: qualityRows.results.map((row) => ({ kind: row.kind, status: row.status, evidenceArtifactId: row.artifact_id, evidenceSha256: row.sha256 })),
+      generatedAt: now,
+    });
+    const provenanceArtifact = await createArtifact(context, 'provenance', JSON.stringify(provenance));
     const releaseId = crypto.randomUUID();
     const connectionId = crypto.randomUUID();
     const deploymentId = crypto.randomUUID();
@@ -487,7 +517,7 @@ async function executeTask(context: ExecutionContext) {
       env.DB.prepare("INSERT INTO releases (id,project_id,job_id,artifact_id,version,status,created_by,created_at) VALUES (?,?,?,?,?,'approved',?,?)").bind(releaseId, access.job.project_id, access.job.id, sourceBundle.id, '1.0.0', access.user.userId, now),
       env.DB.prepare("INSERT INTO deployment_records (id,release_id,connection_id,environment,provider_ref,url,status,health_json,created_at,completed_at) VALUES (?,?,?,?,?,?,'ready',?,?,?)").bind(deploymentId, releaseId, connectionId, 'preview', preview.id, preview.url, JSON.stringify({ smoke: 'passed', managedBy: 'fenix-autopilot' }), now, now),
     ]);
-    await recordSystemAgent(context, 'Deploy Agent', 'Publishes only quality-approved artifacts to an isolated preview environment.', { environment: 'isolated-preview', previewUrl: preview.url, sourceRevision: repository?.head_revision, smoke: 'passed' });
+    await recordSystemAgent(context, 'Deploy Agent', 'Publishes only quality-approved artifacts to an isolated preview environment.', { environment: 'isolated-preview', previewUrl: preview.url, sourceRevision: repository?.head_revision, provenanceArtifactId: provenanceArtifact.id, sourceTreeRoot: provenance.subject.sourceTreeRoot, smoke: 'passed' });
     return sourceBundle;
   }
 
