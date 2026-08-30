@@ -6,6 +6,8 @@ import {
   builderFilePrompt,
   classifyBuildComplexity,
   createHybridFilePlan,
+  createSourceAccessibilityEvidence,
+  evaluateExperienceQuality,
   fallbackExperienceFiles,
   normalizeGeneratedFileContent,
   parseAgenticPatchSet,
@@ -23,13 +25,13 @@ function validCandidate() {
         op: 'write',
         path: 'public/experience.css',
         purpose: 'Direzione visiva',
-        content: ':root{--generated:#267052}.domain-card{display:grid}@media(prefers-reduced-motion:reduce){.domain-card{transition:none}}',
+        content: `:root{--generated:#267052}.product-view .domain-card{display:grid;gap:12px;padding:16px;border-radius:20px;background:linear-gradient(145deg,#fff,#eef8f2);box-shadow:0 16px 36px #17251d1c;transition:transform .2s ease}.product-view .domain-card:focus-visible{outline:3px solid var(--generated)}@media(max-width:640px){.product-view .domain-card{padding:14px}}@media(prefers-reduced-motion:reduce){.product-view .domain-card{transition:none}}`,
       },
       {
         op: 'write',
         path: 'public/experience.js',
         purpose: 'Interazione di dominio',
-        content: "const app=document.querySelector('#app');app?.setAttribute('data-agentic-experience','ready');window.parent?.postMessage({type:'fenix:experience-ready'},'*');",
+        content: "const card=document.querySelector('.domain-card');document.documentElement.dataset.agenticExperience='ready';card?.setAttribute('data-agentic-experience','ready');card?.addEventListener('click',()=>card.setAttribute('data-active','true'));window.parent?.postMessage({type:'fenix:experience-ready'},'*');",
       },
     ],
   };
@@ -118,6 +120,27 @@ test('invalid Builder output cannot partially write a PatchSet', () => {
   const candidate = validCandidate();
   candidate.patches.pop();
   assert.throws(() => parseAgenticPatchSet(candidate, createHybridFilePlan(brief), classifyBuildComplexity(brief)), /required_file_missing/);
+});
+
+test('experience quality rejects the raw form replacement shown by the mobile regression', () => {
+  const brief = inferProductBrief('app per muratori', 'Applicazione mobile per gestire un cantiere');
+  const raw = [
+    { path: 'public/experience.css', content: 'body{margin:0}input{width:100%}@media(prefers-reduced-motion:reduce){*{transition:none}}' },
+    { path: 'public/experience.js', content: "const app=document.querySelector('#app');app.innerHTML='<h1>App per muratori</h1><form><input><button>Crea attività</button></form>';window.parent?.postMessage({type:'fenix:experience-ready'},'*');" },
+  ];
+  const result = evaluateExperienceQuality(brief, raw);
+  assert.equal(result.pass, false);
+  assert.ok(result.failures.includes('preservesApplication'));
+  assert.ok(result.failures.includes('visualSystem'));
+});
+
+test('verified fallback exposes durable WCAG evidence when the visual provider omits its optional audit payload', () => {
+  const brief = inferProductBrief('app per muratori', 'Applicazione mobile per gestire un cantiere');
+  const files = attachAgenticExperience(generateAgenticApplication(brief), fallbackExperienceFiles(brief), 'rescue');
+  const evidence = createSourceAccessibilityEvidence(files);
+  assert.equal(evidence?.source, 'verified-source-contract');
+  assert.equal(evidence?.checks.visibleFocus, true);
+  assert.equal(evidence?.checks.touchTargets, true);
 });
 
 test('repair is bound to diagnosed suspect files and root causes', () => {

@@ -14,8 +14,10 @@ import {
   createArchitectureContract,
   createHybridFilePlan,
   createProductSpecification,
+  createSourceAccessibilityEvidence,
   createUxBlueprint,
   diagnosisPrompt,
+  evaluateExperienceQuality,
   fallbackExperienceFiles,
   normalizeGeneratedFileContent,
   parseAgenticPatchSet,
@@ -314,6 +316,9 @@ async function executeTask(context: ExecutionContext) {
           if (syntax.success) await recordBuildEvent(context, 'builder.syntax.repaired', 'info', 'JavaScript AI corretto e verificato con node --check');
         }
         if (!syntax.success) throw new Error(`agentic_javascript_syntax:${(syntax.stderr || syntax.stdout).slice(-600)}`);
+        const experienceQuality = evaluateExperienceQuality(brief, builderPatch.patches.map((patch) => ({ path: patch.path, content: patch.content })));
+        await createArtifact(context, 'experience_quality_contract', JSON.stringify(experienceQuality));
+        if (!experienceQuality.pass) throw new Error(`agentic_experience_quality:${experienceQuality.failures.join(',')}`);
         files = attachAgenticExperience(scaffold, builderPatch.patches.map((patch) => ({ path: patch.path, content: patch.content })), 'hybrid-agentic');
         generationMode = 'hybrid-agentic';
         await createArtifact(context, 'agentic_patch_set', JSON.stringify(builderPatch));
@@ -436,9 +441,20 @@ async function executeTask(context: ExecutionContext) {
       } catch (repairError) {
         const repairMessage = repairError instanceof Error ? repairError.message : 'repair_failed';
         await recordBuildEvent(context, 'repair.rejected', 'error', `Riparazione rifiutata dal gate: ${repairMessage}`);
-        throw new Error(`${initialFailure.check}_failed_repair_rejected:${repairMessage}`);
+        failure = initialFailure;
       }
-      if (failure) throw new Error(`${failure.check}_failed_after_repair:${(failure.stderr || failure.stdout).slice(-800)}`);
+      if (failure) {
+        const rescueFiles = attachAgenticExperience(generateAgenticApplication(brief), fallbackExperienceFiles(brief), 'rescue');
+        repairAttempts += 1;
+        await writeFilesVerified(sandbox, scope, rescueFiles);
+        const repository = await persistRepositoryState(context, rescueFiles);
+        await createArtifact(context, 'generated_source_bundle', JSON.stringify({ ...bundle, files: rescueFiles, generationMode: 'rescue', passes: bundle.passes ?? 0, repairAttempts } satisfies SourceBundle));
+        await createArtifact(context, 'agentic_quality_rescue', JSON.stringify({ failedCheck: failure.check, reason: (failure.stderr || failure.stdout).slice(-800), headRevision: repository.headRevision }));
+        await recordSystemAgent(context, 'Recovery Agent', 'Replaces a failed AI visual overlay with the complete verified product implementation and reruns every executable gate.', { failedCheck: failure.check, headRevision: repository.headRevision, files: rescueFiles.length });
+        await recordBuildEvent(context, 'repair.rescue.activated', 'warning', `Overlay AI scartato dopo ${failure.check}: ripristinata automaticamente l’app completa verificata`);
+        failure = await runExecutableGates();
+        if (failure) throw new Error(`${failure.check}_failed_after_verified_rescue:${(failure.stderr || failure.stdout).slice(-800)}`);
+      }
     }
     const preview = await latestPreview(access.job.id);
     if (!preview?.url) throw new Error('preview_missing_for_quality');
@@ -455,7 +471,9 @@ async function executeTask(context: ExecutionContext) {
     const semanticAccessibility = metadata?.html?.includes('<main') && metadata.html.includes('aria-label=') && Boolean(metadata.text?.trim())
       ? { source: 'rendered-semantic-dom', domPath: metadata.domPath ?? null, landmark: 'main', labelledRegion: true, renderedText: true }
       : null;
-    const accessibilityEvidence = inspection.accessibility ?? semanticAccessibility;
+    const qualityBundle = await latestGeneratedBundle(access.job.id);
+    const sourceAccessibility = createSourceAccessibilityEvidence(qualityBundle.files);
+    const accessibilityEvidence = inspection.accessibility ?? semanticAccessibility ?? sourceAccessibility;
     const visualArtifact = await createBinaryArtifact(context, 'screenshot', screenshot.base64, screenshot.mediaType ?? 'image/png', screenshot.sha256);
     await recordQuality(context, 'e2e', 'passed', 'Visual runner loaded #app', visualArtifact.id, 0, { viewport: inspection.viewport });
     await recordQuality(context, 'accessibility', accessibilityEvidence ? 'passed' : 'failed', accessibilityEvidence ? 'Accessibility evidence captured' : 'Accessibility evidence missing', visualArtifact.id, 0, { accessibility: accessibilityEvidence });

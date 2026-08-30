@@ -454,3 +454,32 @@ test('existing generic entertainment previews are upgraded from the original pro
   assert.match(html, /CineMagic/);
   assert.doesNotMatch(html, /Alpha|Orione|Nova|Atlas/);
 });
+
+test('construction prompts compile into a mobile cantiere product instead of a generic form', () => {
+  const brief = inferProductBrief('app per muratori', 'Applicazione per muratori da usare in cantiere');
+  assert.equal(brief.appType, 'operations');
+  assert.equal(brief.entity.singular, 'Lavorazione');
+  assert.deepEqual(brief.pages, ['Cantiere', 'Lavorazioni', 'Squadra', 'Sicurezza']);
+  assert.match(brief.compiler.intent.successScene, /cantiere di oggi/i);
+  assert.equal(brief.compiler.grammar.layoutBias[0], 'board');
+  assert.deepEqual(buildDomainActions(brief).map((action) => action.label), ['Avvia lavorazione', 'Verifica sicurezza', 'Chiudi lavorazione']);
+  const files = generateAgenticApplication(brief);
+  const html = files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  assert.match(html, /Cantiere live/);
+  assert.match(html, /In cantiere/);
+  assert.match(html, /data-icon-system="lucide-v1"/);
+  assert.doesNotMatch(html, /Attività creata con successo/);
+});
+
+test('the durable preview upgrades an already-saved generic muratori build on reload', () => {
+  const generic = inferProductBrief('Nuovo progetto', 'Applicazione generica');
+  const refreshed = refreshPreviewBundle(
+    { productBrief: generic, files: generateAgenticApplication(generic) },
+    { name: 'app per muratori', description: 'Applicazione full-stack: app per muratori' },
+  );
+  const html = refreshed.files.find((file) => file.path === 'public/index.html')?.content ?? '';
+  assert.equal(refreshed.productBrief.entity.singular, 'Lavorazione');
+  assert.match(html, /Avanzamento lavori in cantiere/);
+  assert.match(html, /Avvia lavorazione/);
+  assert.doesNotMatch(html, />Titolo:</);
+});

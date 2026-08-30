@@ -131,6 +131,17 @@ function inferIntent(name: string, description: string, legacy: LegacyBrief): In
     antiJobs = ['gestire un catalogo aziendale', 'mostrare KPI o tabelle come prima schermata'];
     primaryActor = { id: 'viewer', role: 'member', display: 'Spettatore' };
     secondaryActors = [{ id: 'curator', role: 'operator', display: 'Curatore' }];
+  } else if (includes(source, ['murator', 'cantiere', 'edil', 'capocantiere', 'lavori in corso'])) {
+    nouns = [
+      noun('work', 'Lavorazione', 'Lavorazioni', ['cantiere', 'squadra', 'scadenza', 'avanzamento', 'sicurezza'], ['Posa muratura piano terra', 'Tramezzi scala B']),
+      noun('site', 'Cantiere', 'Cantieri', ['indirizzo', 'responsabile', 'stato']),
+    ];
+    verbs.push('assign', 'track', 'approve');
+    successScene = 'Il cantiere di oggi con lavorazioni, squadra e sicurezza sotto controllo';
+    setting = 'un cantiere operativo consultato rapidamente da smartphone';
+    antiJobs = ['mostrare un form generico', 'ridurre il cantiere a una lista senza avanzamento'];
+    primaryActor = { id: 'foreman', role: 'operator', display: 'Capocantiere' };
+    secondaryActors = [{ id: 'crew', role: 'member', display: 'Squadra' }];
   } else if (includes(source, ['turni', 'turno', 'sala e cucina', 'chef', 'fuochi', 'ticket'])) {
     nouns = [
       noun('shift', 'Turno', 'Turni', ['persona', 'area', 'inizio', 'fine', 'copertura'], ['Sala pranzo', 'Pass cucina']),
